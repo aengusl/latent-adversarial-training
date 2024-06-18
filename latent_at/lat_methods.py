@@ -12,7 +12,6 @@ import wandb
 from peft import AutoPeftModelForCausalLM, PeftModel
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
-
 from tasks.inference_utils import get_batched_generations
 
 import torch.distributed as dist
