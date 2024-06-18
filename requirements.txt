@@ -1,0 +1,5 @@
+torch
+transformers
+peft
+python-dotenv
+wandb
