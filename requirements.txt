@@ -4,3 +4,5 @@ peft
 python-dotenv
 wandb
 datasets
+omegaconf
+lm_eval
