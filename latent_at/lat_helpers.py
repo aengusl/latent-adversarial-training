@@ -140,6 +140,66 @@ def compute_dpo_loss(
 
     return losses
 
+def compute_rmu_retain_loss( # TODO first draft
+    model,
+    frozen_model, # TODO: add config for forget activations instead to minimize VRAM requirement
+    retain_tokens,
+    retain_labels_mask,
+    retain_labels,
+    coefs,
+    accelerator=None,
+    device="cuda",
+):
+    _device = device if accelerator is None else accelerator.device
+    # Computes RMU retain loss
+    losses = {"rmu_retain": 0}
+
+    # Retain loss
+    retain_tokens = retain_tokens[retain_labels_mask].to(_device)
+    updated_activations = forward_with_cache(
+        model, retain_tokens,
+    ).to(_device)
+    frozen_activations = forward_with_cache(
+        frozen_model, retain_tokens,
+    ).to(_device)
+    retain_loss = torch.nn.functional.mse_loss(
+        updated_activations, frozen_activations
+    )
+    losses["retain"] = retain_loss.item()
+    
+    return losses # TODO
+
+def compute_rmu_forget_loss(
+    model,
+    frozen_model,
+    forget_tokens,
+    forget_labels_mask,
+    forget_labels,
+    rmu_vec, # TODO
+    updated_module,
+    frozen_module,
+    coefs,
+    accelerator=None,
+    device="cuda",
+):
+
+    _device = device if accelerator is None else accelerator.device
+    # Computes RMU forget loss
+    losses = {"rmu_forget": 0}
+
+    # Forget loss
+    forget_tokens = forget_tokens[forget_labels_mask].to(_device)
+    updated_activations = forward_with_cache(
+        model, forget_tokens, module=updated_module, no_grad=False,
+    ).to(_device)
+    random_vector = torch.rand(updated_activations.shape, device=(device if accelerator is None else accelerator.device)) # TODO: fix this to use input rmu vec
+    control_vec = (coefs["control_vec"] * random_vector).to(_device)
+    forget_loss = torch.nn.functional.mse_loss(
+        updated_activations, control_vec
+    )
+    losses["forget"] = forget_loss.item()
+    
+    return losses # TODO
 
 def do_adversary_step(
     model,
@@ -151,7 +211,7 @@ def do_adversary_step(
     device="cuda",
     accelerator=None,
 ):
-    
+    breakpoint()
     if "dpo" in coefs:
         
         toward_tokens = batch["adv_tokens"].to(device)
@@ -205,7 +265,7 @@ def do_adversary_step(
             away_tokens = None
             away_labels_mask = None
             away_labels = None
-
+        breakpoint()
         loss = compute_toward_away_loss(
             model=model,
             towards_tokens=toward_tokens,
