@@ -2,19 +2,12 @@ import copy
 import itertools
 import time
 import os
-import random
 import math
 
-import matplotlib.pyplot as plt
 import torch
-import torch.nn.functional as F
 import wandb
-from peft import AutoPeftModelForCausalLM, PeftModel
+from peft import PeftModel
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from tasks.inference_utils import get_batched_generations
-
-import torch.distributed as dist
 
 from .utils import *
 from .laa import *
@@ -22,9 +15,15 @@ from .laa.attacks import GDAdversary, WhitenedGDAdversary
 from .lat_helpers import *
 from .fit_pca import get_pcas_of_acts, get_pcas_of_acts_diff
 
-import deepspeed
+try:
+    import deepspeed
+    IS_USING_DEEPSPEED = True
+except ImportError:
+    IS_USING_DEEPSPEED = False
 
 def is_deepspeed_model(model):
+    if not IS_USING_DEEPSPEED:
+        return False
     return isinstance(model, deepspeed.DeepSpeedEngine)
 
 # def create_pca_adversary(pca_kwargs):

@@ -2,7 +2,6 @@ import os
 import random
 from itertools import cycle
 
-import matplotlib.pyplot as plt
 import torch
 from tqdm.auto import tqdm
 from datasets import load_dataset

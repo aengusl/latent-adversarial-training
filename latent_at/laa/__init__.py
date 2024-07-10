@@ -2,9 +2,12 @@ from typing import Any, Callable, List, Tuple, Union
 
 import torch
 import transformers
-from transformer_lens import HookedTransformer
-from transformer_lens.hook_points import HookPoint
-
+try:
+    from transformer_lens import HookedTransformer
+    IS_USING_TL = True
+except ImportError:
+    HookedTransformer = None
+    IS_USING_TL = False
 
 # custom hooks if we're not using transformer-lens
 class CustomHook(torch.nn.Module):
@@ -83,14 +86,17 @@ def add_hooks(
     adversary_locations: Union[List[Tuple[int, str]], List[Tuple[str, str]]]
 ):
     # check if we're using transformer-lens
-    using_tl = isinstance(model, HookedTransformer)
+    if IS_USING_TL:
+        is_tl_model = isinstance(model, HookedTransformer)
+    else:
+        is_tl_model = False
 
     # adverseries is a list of things created by `create_adversary()`
     # hooks is a list of the hooks we've added to the model
     adversaries = []
     hooks = []
 
-    if using_tl and isinstance(adversary_locations[0][0], int):
+    if is_tl_model and isinstance(adversary_locations[0][0], int):
         for layer, subcomponent in adversary_locations:
             # get the hook
             hook = model.blocks[layer].get_submodule(subcomponent)

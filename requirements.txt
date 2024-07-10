@@ -6,3 +6,4 @@ wandb
 datasets
 omegaconf
 lm_eval
+sentencepiece

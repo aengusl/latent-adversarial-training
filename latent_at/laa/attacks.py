@@ -1,5 +1,4 @@
 import torch
-import einops
 
 class VectorAdversary(torch.nn.Module):
     
@@ -96,7 +95,7 @@ class WhitenedGDAdversary(torch.nn.Module):
         self.attack_mask = attack_mask
     
     def forward(self, x):
-        unprojected_attack = einops.einsum(self.inv_proj, self.attack, "n d, batch seq n-> batch seq d") # n is whitened dimension, d is original hidden size (technically same here)
+        unprojected_attack = torch.einsum("n d, batch seq n-> batch seq d", self.inv_proj, self.attack) # n is whitened dimension, d is original hidden size (technically same here)
         x[self.attack_mask[:, :x.shape[1]]] = (x + unprojected_attack.to(x.dtype))[self.attack_mask[:, :x.shape[1]]]
         return x
 
