@@ -139,6 +139,7 @@ def compute_dpo_loss(
 
     return losses
 
+#SC: this has TODOs
 def compute_rmu_retain_loss( # TODO first draft
     model,
     frozen_model, # TODO: add config for forget activations instead to minimize VRAM requirement
@@ -168,6 +169,7 @@ def compute_rmu_retain_loss( # TODO first draft
     
     return losses # TODO
 
+#SC: this has TODOs
 def compute_rmu_forget_loss(
     model,
     frozen_model,
@@ -200,6 +202,7 @@ def compute_rmu_forget_loss(
     
     return losses # TODO
 
+
 def do_adversary_step(
     model,
     batch,
@@ -211,7 +214,7 @@ def do_adversary_step(
     accelerator=None,
 ):
     breakpoint()
-    if "dpo" in coefs:
+    if "dpo" in coefs: # If running DPO training
         
         toward_tokens = batch["adv_tokens"].to(device)
         toward_labels_mask = batch["adv_labels_mask"].to(device)
@@ -228,12 +231,12 @@ def do_adversary_step(
             coefs=coefs,
         )
     
-    else:
+    else: # if using another training set up
         
         include_towards_loss = "toward" in coefs and coefs["toward"] > 0
         include_away_loss = "away" in coefs and coefs["away"] > 0
         
-        if include_towards_loss:
+        if include_towards_loss:  # a loss for positively supervised behavior
             toward_tokens = batch["adv_tokens"].to(device)
             toward_labels_mask = batch["adv_labels_mask"].to(device)
             if "adv_labels" in batch:
@@ -249,7 +252,7 @@ def do_adversary_step(
             toward_labels_mask = None
             toward_labels = None
 
-        if include_away_loss:
+        if include_away_loss:  # a loss for negatively supervised behavior
             away_tokens = batch["def_tokens"].to(device)
             away_labels_mask = batch["def_labels_mask"].to(device)
             if "def_labels" in batch:
@@ -264,7 +267,10 @@ def do_adversary_step(
             away_tokens = None
             away_labels_mask = None
             away_labels = None
+
         breakpoint()
+
+        # compute overall loss
         loss = compute_toward_away_loss(
             model=model,
             towards_tokens=toward_tokens,

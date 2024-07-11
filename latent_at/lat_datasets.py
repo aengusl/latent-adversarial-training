@@ -146,193 +146,6 @@ class LatentAdversarialTrainingDataCollator:
             # "prompt_strs": [x["prompt_strs"] for x in batch]
         }
 
-class LatentAdverserialTrainingDataCollatorWithLabels:
-    def __init__(self, pad_token_id, ignore_label_id=-100, truncate_length=None):
-        assert pad_token_id is not None, "pad_token_id must be specified"
-
-        self.pad_token_id = pad_token_id
-        self.ignore_label_id = ignore_label_id
-        self.truncate_length = truncate_length
-
-    def __call__(self, batch):
-        B = len(batch)
-
-        prompt_lengths = []
-        adv_prompt_lengths = []
-        def_prompt_lengths = []
-
-        for i in range(B):
-            prompt_lengths.append(len(batch[i]["prompt_tokens"]))
-            adv_prompt_lengths.append(len(batch[i]["prompt_tokens"]) + len(batch[i]["adv_tokens"]))
-            def_prompt_lengths.append(len(batch[i]["prompt_tokens"]) + len(batch[i]["def_tokens"]))
-        
-        pad_length = max(adv_prompt_lengths + def_prompt_lengths)
-
-        adv_prompt_tokens = torch.zeros(B, pad_length, dtype=torch.long)
-        def_prompt_tokens = torch.zeros(B, pad_length, dtype=torch.long)
-
-        prompt_mask = torch.zeros(B, pad_length, dtype=torch.bool)
-
-        for i in range(B):
-            adv_prompt_tokens[i] = torch.tensor(batch[i]["prompt_tokens"] + batch[i]["adv_tokens"] + [self.pad_token_id] * (pad_length - adv_prompt_lengths[i]))
-            def_prompt_tokens[i] = torch.tensor(batch[i]["prompt_tokens"] + batch[i]["def_tokens"] + [self.pad_token_id] * (pad_length - def_prompt_lengths[i]))
-
-            prompt_mask[i, :prompt_lengths[i]] = True
-        
-        if self.truncate_length is not None:
-            adv_prompt_tokens = adv_prompt_tokens[:, :self.truncate_length]
-            def_prompt_tokens = def_prompt_tokens[:, :self.truncate_length]
-            prompt_mask = prompt_mask[:, :self.truncate_length]
-
-        adv_labels = adv_prompt_tokens.clone()
-        adv_labels[prompt_mask] = self.ignore_label_id
-        adv_labels[adv_labels == self.pad_token_id] = self.ignore_label_id
-
-        def_labels = def_prompt_tokens.clone()
-        def_labels[prompt_mask] = self.ignore_label_id
-        def_labels[def_labels == self.pad_token_id] = self.ignore_label_id
-
-        return {
-            "adv_tokens": adv_prompt_tokens,
-            "def_tokens": def_prompt_tokens,
-            "adv_labels": adv_labels,
-            "def_labels": def_labels,
-            "prompt_mask": prompt_mask,
-        }
-
-def tokenized_alice_dataset(dataset="EleutherAI/qm_mixture", difficulty=None, pad_token_id=None):
-    qm_mixture_dataset = load_dataset(dataset, split="train")
-    if difficulty == "easy":
-        qm_mixture_dataset = qm_mixture_dataset.filter(lambda x: x['difficulty'] <= 2)
-    elif difficulty == "hard":
-        qm_mixture_dataset = qm_mixture_dataset.filter(lambda x: x['difficulty'] > 2)
-    tokenizer = AutoTokenizer.from_pretrained(
-        "EleutherAI/qm-Llama-2-7b-hf-mixture",
-        token=hf_access_token
-    )
-
-    if pad_token_id is not None:
-        tokenizer.pad_token_id = pad_token_id
-
-    def replace_names_and_tokenize(examples):
-        # for each example, we want to replace the character name with the other character name
-        alice_examples = [example.replace("Bob", "Alice") for example in examples["statement"]]
-        # we also want to tokenize the examples
-        alice_tokenized = tokenizer(alice_examples)
-        # Tokenize prompts & completions
-        examples["prompt_tokens"] = []
-        examples["adv_tokens"] = []
-        examples["def_tokens"] = []
-        for i in range(len(examples)):
-            # print(len(alice_tokenized["input_ids"][i]))
-            examples["prompt_tokens"].append(alice_tokenized["input_ids"][i])
-            alice_choice = examples["choices"][i][examples["alice_label"][i]]
-            bob_choice = examples["choices"][i][examples["bob_label"][i]]
-            examples["def_tokens"].append([tokenizer(alice_choice)["input_ids"][-1]])
-            examples["adv_tokens"].append([tokenizer(bob_choice)["input_ids"][-1]])
-        return examples
-
-    keep_cols = ["prompt_tokens", "adv_tokens", "def_tokens"]
-
-    qm_mixture_dataset = qm_mixture_dataset.map(
-        replace_names_and_tokenize,
-        batched=True,
-        batch_size=1000,
-        remove_columns=set(qm_mixture_dataset.column_names) - set(keep_cols),
-    )
-    
-    qm_mixture_dataset = LatentAdversarialTrainingDataset(qm_mixture_dataset)
-    return qm_mixture_dataset
-
-
-def tokenized_bob_dataset(dataset="EleutherAI/qm_mixture", difficulty=None, pad_token_id=None):
-    qm_mixture_dataset = load_dataset(dataset, split="train")
-    if difficulty == "easy":
-        qm_mixture_dataset = qm_mixture_dataset.filter(lambda x: x['difficulty'] <= 2)
-    elif difficulty == "hard":
-        qm_mixture_dataset = qm_mixture_dataset.filter(lambda x: x['difficulty'] > 2)
-    tokenizer = AutoTokenizer.from_pretrained(
-        "EleutherAI/qm-Llama-2-7b-hf-mixture",
-        token=hf_access_token
-    )
-
-    if pad_token_id is not None:
-        tokenizer.pad_token_id = pad_token_id
-
-    def replace_names_and_tokenize(examples):
-        # for each example, we want to replace the character name with the other character name
-        bob_examples = [example.replace("Alice", "Bob") for example in examples["statement"]]
-        # we also want to tokenize the examples
-        alice_tokenized = tokenizer(bob_examples)
-        # Tokenize prompts & completions
-        examples["prompt_tokens"] = []
-        examples["adv_tokens"] = []
-        examples["def_tokens"] = []
-        for i in range(len(examples)):
-            examples["prompt_tokens"].append(alice_tokenized["input_ids"][i])
-            alice_choice = examples["choices"][i][examples["alice_label"][i]]
-            bob_choice = examples["choices"][i][examples["bob_label"][i]]
-            examples["def_tokens"].append([tokenizer(bob_choice)["input_ids"][-1]])
-            examples["adv_tokens"].append([tokenizer(alice_choice)["input_ids"][-1]])
-        return examples
-
-    keep_cols = ["prompt_tokens", "adv_tokens", "def_tokens"]
-
-    qm_mixture_dataset = qm_mixture_dataset.map(
-        replace_names_and_tokenize,
-        batched=True,
-        batch_size=1000,
-        remove_columns=set(qm_mixture_dataset.column_names) - set(keep_cols),
-    )
-    
-    qm_mixture_dataset = LatentAdversarialTrainingDataset(qm_mixture_dataset)
-    return qm_mixture_dataset
-
-
-def tokenized_ultrachat_dataset(
-    tokenizer,
-    filter_len=2048,
-    system_prompt=""
-):
-
-    def formatting_fn(
-        example
-    ):
-        messages = example["messages"]
-        if messages[0]["role"] != "system":
-            messages.insert(0, {"role": "system", "content": system_prompt})
-        example["text"] = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False
-        )
-        return example
-    
-    dataset = load_dataset("HuggingFaceH4/ultrachat_200k")["train_sft"]
-    dataset = dataset.map(formatting_fn)
-
-    def tokenize_batch(examples):
-        texts = examples["text"]
-        tokens = tokenizer(texts, add_special_tokens=False).input_ids
-        examples["def_tokens"] = tokens
-        examples["prompt_tokens"] = [[] for _ in range(len(tokens))]
-        examples["adv_tokens"] =  [[] for _ in range(len(tokens))]
-        return examples
-
-    dataset = dataset.map(
-        tokenize_batch,
-        batched=True,
-        remove_columns={"messages", "prompt", "prompt_id"}
-    )
-
-    if filter_len is not None:
-        start_len = len(dataset)
-        dataset = dataset.filter(
-            lambda x: len(x["def_tokens"]) <= filter_len
-        )
-        end_len = len(dataset)
-        print(f"Filtered out {(start_len - end_len) / start_len * 100:.2f}% of the dataset")
-
-    return LatentAdversarialTrainingDataset(dataset)
-
 
 def apply_chat_formatting(
     tokenizer,
@@ -381,6 +194,7 @@ def process_generic_chat_dataset(
     filter_len=None,
     num_adv_words=None,
     map_fn=None,
+    add_eos_token=False,
     **dataset_kwargs,
 ):
     # loader for generic datasets of the form (prompt, positive_completion, negative_completion)
@@ -433,7 +247,10 @@ def process_generic_chat_dataset(
             else:
                 examples["adv_completion"][i] = " ".join(adv_completion.split(" ")[:num_adv_words])
 
-            examples["def_completion"][i] = def_completion
+            if add_eos_token:
+                examples["def_completion"][i] = def_completion + tokenizer.eos_token
+            else:
+                examples["def_completion"][i] = def_completion
         
         return examples
 
@@ -464,62 +281,6 @@ def process_generic_chat_dataset(
         print(f"Filtered out {(start_len - end_len) / start_len * 100:.2f}% of the dataset")
 
     return LatentAdversarialTrainingDataset(dataset)
-
-def process_generic_pair_dataset(
-    tokenizer,
-    dataset_name="Anthropic/hh-rlhf",
-    chosen_column="chosen",
-    rejected_column="rejected",
-    response_start_token="Assistant:",
-    custom_template=None,
-    prompt_filter_len=None,
-    whole_filter_len=None,
-    **dataset_kwargs,
-):
-    assert custom_template is None, "not implemented"        
-
-    dataset = load_dataset(dataset_name, **dataset_kwargs)
-
-    def process_paired_examples(examples):
-        prompts = []
-        chosen_repsonses = []
-        rejected_responses = []
-        for i in range(len(examples[chosen_column])):
-            sequences = examples[chosen_column][i].split(response_start_token)
-            prompt = response_start_token.join(sequences[:-1]) + response_start_token
-            chosen = sequences[-1]
-            rejected = examples[rejected_column][i][len(prompt):]
-
-            prompts.append(prompt)
-            chosen_repsonses.append(chosen)
-            rejected_responses.append(rejected)
-
-        return {"prompt": prompts, "chosen": chosen_repsonses, "rejected": rejected_responses}
-    
-    chat_dataset = dataset.map(process_paired_examples, batched=True)
-
-    def tokenize_batch(examples):
-        examples["prompt_tokens"] = tokenizer(examples["prompt"], add_special_tokens=False).input_ids
-        examples["adv_tokens"] = tokenizer(examples["rejected"], add_special_tokens=False).input_ids
-        examples["def_tokens"] = tokenizer(examples["chosen"], add_special_tokens=False).input_ids
-        return examples
-    
-    tokenized_chat_dataset = chat_dataset.map(tokenize_batch, batched=True)
-
-    if prompt_filter_len is not None:
-        start_len = len(tokenized_chat_dataset)
-        tokenized_chat_dataset = tokenized_chat_dataset.filter(lambda x: len(x["prompt_tokens"]) <= prompt_filter_len)
-        end_len = len(tokenized_chat_dataset)
-        print(f"Filtered out {(start_len - end_len) / start_len * 100:.2f}% of the dataset")
-    elif whole_filter_len is not None:
-        start_len = len(tokenized_chat_dataset)
-        tokenized_chat_dataset = tokenized_chat_dataset.filter(
-            lambda x: len(x["prompt_tokens"]) + max(len(x["adv_tokens"]), len(x["def_tokens"])) <= whole_filter_len
-        )
-        end_len = len(tokenized_chat_dataset)
-        print(f"Filtered out {(start_len - end_len) / start_len * 100:.2f}% of the dataset")
-
-    return LatentAdversarialTrainingDataset(tokenized_chat_dataset)
 
 
 def tokenized_behavior_dataset(

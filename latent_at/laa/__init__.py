@@ -23,6 +23,7 @@ class CustomHook(torch.nn.Module):
         else:
             return self.module(*args, **kwargs)
 
+# a hook for transformer-lens models
 class TLHook(torch.nn.Module):
     def __init__(self, hook_fn):
         super().__init__()

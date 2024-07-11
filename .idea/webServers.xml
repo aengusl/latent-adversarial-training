@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="WebServers">
+    <option name="servers">
+      <webServer id="953368fe-a41b-42ab-ae5c-998f990ebf0f" name="align-3.csail.mit.edu" url="http://align-3.csail.mit.edu">
+        <fileTransfer rootFolder="/raid/aag/scasper/latent-adversarial-training/" accessType="SFTP" host="align-3.csail.mit.edu" port="22" sshConfigId="ed4d726c-cf80-4ceb-a440-9ee863971d20" sshConfig="scasper@align-3.csail.mit.edu:22 password">
+          <advancedOptions>
+            <advancedOptions dataProtectionLevel="Private" keepAliveTimeout="0" passiveMode="true" shareSSLContext="true" />
+          </advancedOptions>
+        </fileTransfer>
+      </webServer>
+    </option>
+  </component>
+</project>

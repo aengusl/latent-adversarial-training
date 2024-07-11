@@ -65,7 +65,8 @@ def zero_nan_grads(model):
                 flag = True
                 p.grad[torch.isnan(p.grad)] = 0.
     if flag:
-        print(f"{type(name)} has nan gradient. Setting it to zero.")
+        pass
+        # print(f"{type(name)} has nan gradient. Setting it to zero.")
 
 
 def forward_with_cache(model, inputs, module, no_grad=True):

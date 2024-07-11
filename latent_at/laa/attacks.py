@@ -1,17 +1,7 @@
 import torch
 
-class VectorAdversary(torch.nn.Module):
-    
-    def __init__(self, dim, device):
-        super().__init__()
-        self.dim = dim
-        self.device = device
-        self.vector = torch.nn.Parameter(torch.zeros(dim, device=device))
-    
-    def forward(self, x):
-        return x + self.vector
 
-
+# The attacker is parameterized by a low-rank MLP (not used by default)
 class LowRankAdversary(torch.nn.Module):
     
     def __init__(self, dim, rank, device, bias=False, zero_init=True):
@@ -28,6 +18,7 @@ class LowRankAdversary(torch.nn.Module):
         return self.lora_B(self.lora_A(x)) + x
 
 
+# The attacker is parameterized by a full-rank MLP (not used by default)
 class FullRankAdversary(torch.nn.Module):
     
     def __init__(self, dim, device, bias=False):
@@ -42,6 +33,7 @@ class FullRankAdversary(torch.nn.Module):
         return self.m(x) + x
 
 
+# Standard projected gradient attack (used by default)
 class GDAdversary(torch.nn.Module):
     
     def __init__(self, dim, epsilon, attack_mask, device=None):
@@ -75,6 +67,7 @@ class GDAdversary(torch.nn.Module):
             norms = torch.norm(self.attack, dim=-1)
 
 
+# Whitened adversaries train perturbations in a whitened space (not used by default)
 class WhitenedGDAdversary(torch.nn.Module):
 
     def __init__(self, dim, device, epsilon, attack_mask, proj=None, inv_proj=None):
@@ -82,7 +75,7 @@ class WhitenedGDAdversary(torch.nn.Module):
         self.attack = None
         self.device = device
         self.epsilon = epsilon
-        self.proj = proj
+        self.proj = proj  # proj is a projection matrix (e.g. one obtained using PCA) to whiten the attack
 
         if inv_proj is None:
             self.inv_proj = torch.inverse(proj)
