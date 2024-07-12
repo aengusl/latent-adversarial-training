@@ -47,15 +47,17 @@ class GDAdversary(torch.nn.Module):
         self.attack_mask = attack_mask
     
     def forward(self, x):
-        if self.device is None or self.device != x.device:
-            with torch.no_grad():
-                self.device = x.device
-                self.attack.data = self.attack.data.to(self.device)
-                self.attack_mask = self.attack_mask.to(self.device)
-
-        perturbed_acts = x[self.attack_mask[:, :x.shape[1]]] + self.attack[self.attack_mask[:, :x.shape[1]]].to(x.dtype)
-        x[self.attack_mask[:, :x.shape[1]]] = perturbed_acts
-        return x
+        if x.shape[1] == 1 and self.attack.shape[1] != 1:  # generation mode (perturbation already applied)
+            return x
+        else:
+            if self.device is None or self.device != x.device:
+                with torch.no_grad():
+                    self.device = x.device
+                    self.attack.data = self.attack.data.to(self.device)
+                    self.attack_mask = self.attack_mask.to(self.device)
+            perturbed_acts = x[self.attack_mask[:, :x.shape[1]]] + self.attack[self.attack_mask[:, :x.shape[1]]].to(x.dtype)
+            x[self.attack_mask[:, :x.shape[1]]] = perturbed_acts
+            return x
     
     def clip_attack(self):
         with torch.no_grad():
