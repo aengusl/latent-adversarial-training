@@ -139,10 +139,9 @@ def compute_dpo_loss(
 
     return losses
 
-#SC: this has TODOs
-def compute_rmu_retain_loss( # TODO first draft
+def compute_rmu_retain_loss(
     model,
-    frozen_model, # TODO: add config for forget activations instead to minimize VRAM requirement
+    frozen_model,
     retain_tokens,
     retain_labels_mask,
     retain_labels,
@@ -167,16 +166,15 @@ def compute_rmu_retain_loss( # TODO first draft
     )
     losses["retain"] = retain_loss.item()
     
-    return losses # TODO
+    return losses
 
-#SC: this has TODOs
 def compute_rmu_forget_loss(
     model,
     frozen_model,
     forget_tokens,
     forget_labels_mask,
     forget_labels,
-    rmu_vec, # TODO
+    rmu_vec,
     updated_module,
     frozen_module,
     coefs,
@@ -193,14 +191,14 @@ def compute_rmu_forget_loss(
     updated_activations = forward_with_cache(
         model, forget_tokens, module=updated_module, no_grad=False,
     ).to(_device)
-    random_vector = torch.rand(updated_activations.shape, device=(device if accelerator is None else accelerator.device)) # TODO: fix this to use input rmu vec
+    random_vector = torch.rand(updated_activations.shape, device=(device if accelerator is None else accelerator.device))
     control_vec = (coefs["control_vec"] * random_vector).to(_device)
     forget_loss = torch.nn.functional.mse_loss(
         updated_activations, control_vec
     )
     losses["forget"] = forget_loss.item()
     
-    return losses # TODO
+    return losses
 
 
 def do_adversary_step(

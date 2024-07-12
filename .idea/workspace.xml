@@ -5,21 +5,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="d0606f87-98bf-486f-ae66-e5bf4a8d59f1" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/install_tasks_from_github.sh" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/notebooks/latent_adversarial_attack.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/fit_pca.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/laa/__init__.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/laa/__init__.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/laa/attacks.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/laa/attacks.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/lat_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/lat_datasets.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/latent_at/lat_helpers.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/lat_helpers.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/lat_methods.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/lat_methods.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/utils.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/harmbench.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/jailbreaks.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/satml_backdoors.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/backdoors.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/whp_familiarity_evaluations.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/whp_familiarity_evaluations.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/whp_plots.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/whp_plots.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/wmdp.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/wmdp.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/jailbreaks.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/jailbreaks.ipynb" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -40,6 +30,7 @@
   <component name="PropertiesComponent">{
   &quot;keyToString&quot;: {
     &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/home/scasper/projects/latent-adversarial-training/notebooks&quot;,
     &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
     &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
     &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
@@ -49,6 +40,11 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/notebooks" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
@@ -70,6 +66,12 @@
       <workItem from="1720566044538" duration="1536000" />
       <workItem from="1720568499410" duration="11000" />
       <workItem from="1720633941237" duration="18466000" />
+      <workItem from="1720719203366" duration="113000" />
+      <workItem from="1720725229965" duration="2337000" />
+      <workItem from="1720740684321" duration="384000" />
+      <workItem from="1720741187083" duration="1012000" />
+      <workItem from="1720742342014" duration="1058000" />
+      <workItem from="1720743629403" duration="5679000" />
     </task>
     <servers />
   </component>
