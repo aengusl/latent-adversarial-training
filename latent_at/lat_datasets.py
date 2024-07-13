@@ -107,12 +107,6 @@ class LatentAdversarialTrainingDataCollator:
             adv_labels_mask[i, prompt_lengths[i]:adv_prompt_lengths[i]] = True
             def_labels_mask[i, prompt_lengths[i]:def_prompt_lengths[i]] = True
 
-        #print(f"Max batch sequence length is {pad_length}")
-        #print(f"Truncate length is {self.truncate_length}")
-        #print(f"Prompt lengths are {[prompt_length.item() for prompt_length in prompt_lengths]}")
-        #print(f"Adv lengths are {[adv_prompt_lengths[i].item() for i in range(B)]}")
-        #print(f"Def lengths are {[def_prompt_lengths[i].item() for i in range(B)]}")
-
         if self.truncate_length is not None:
             if any([prompt_length > self.truncate_length for prompt_length in prompt_lengths]):
                 print(f"WARNING: Prompt length (at least one of {prompt_lengths}) is less than truncate length ({self.truncate_length})")
@@ -283,6 +277,47 @@ def process_generic_chat_dataset(
     return LatentAdversarialTrainingDataset(dataset)
 
 
+def process_generic_sft_dataset(
+        tokenizer,
+        dataset="wikitext",
+        text_column="text",
+        split="train",
+        config=None,
+        num_examples=100000,
+        **kwargs
+):
+
+    def tokenize_batch(examples):
+        examples["prompt_tokens"] = []
+        examples["adv_tokens"] = []
+        examples["def_tokens"] = []
+        for i in range(len(examples[text_column])):
+            text = examples[text_column][i]
+            tokenized = tokenizer(text, add_special_tokens=False).input_ids
+            examples["prompt_tokens"].append([])
+            examples["adv_tokens"].append(tokenized)
+            examples["def_tokens"].append(tokenized)
+        return examples
+
+    if config is not None:
+        dataset = load_dataset(dataset, config, split=split, **kwargs)
+    else:
+        dataset = load_dataset(dataset, split=split, **kwargs)
+
+    if num_examples is not None:
+        dataset = dataset.take(num_examples)  # think this works for streaming
+    # filter dataset for empty text rows
+    dataset = dataset.filter(lambda x: len(x[text_column]) > 0)
+
+    dataset = dataset.map(
+        tokenize_batch,
+        batched=True,
+    )
+
+    dataset = LatentAdversarialTrainingDataset(dataset)
+    return dataset
+
+
 def tokenized_behavior_dataset(
     behaviors_list,
     tokenizer,
@@ -405,7 +440,6 @@ def process_pretokenized_dataset(
             dataset = dataset.rename_column(def_labels_indices_column, "def_indices")
 
     print("Completed adding/renaming columns, performing checks")
-    print(dataset.column_names)
     # do final checks
     def check_labels_lengths(examples):
     # Assuming examples is a batch of examples
@@ -475,10 +509,6 @@ class PretokenizedLatentAdversarialTrainingDataCollator:
             adv_labels_mask = adv_labels_mask[:, :self.truncate_length]
             def_labels_mask = def_labels_mask[:, :self.truncate_length]
 
-        # don't flatten here, flatten at compute time to allow minibatching/grad accumulation
-        # adv_labels = torch.cat([torch.tensor(x) for x in [x["adv_labels"] for x in batch]])
-        # def_labels = torch.cat([torch.tensor(x) for x in [x["def_labels"] for x in batch]])
-        # print(f"Flattened adv_labels shape: {adv_labels.shape}, def_labels shape: {def_labels.shape}")
         return_dict = {
             "adv_tokens": adv_prompt_tokens,
             "def_tokens": def_prompt_tokens,

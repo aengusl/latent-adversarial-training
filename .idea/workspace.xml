@@ -7,13 +7,8 @@
     <list default="true" id="d0606f87-98bf-486f-ae66-e5bf4a8d59f1" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/latent_at/laa/attacks.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/laa/attacks.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/backdoors.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/backdoors.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/jailbreaks.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/jailbreaks.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/latent_adversarial_attack.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/latent_adversarial_attack.ipynb" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/whp_familiarity_evaluations.ipynb" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/whp_lat_training_script.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/notebooks/whp_plots.ipynb" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/latent_at/lat_datasets.py" beforeDir="false" afterPath="$PROJECT_DIR$/latent_at/lat_datasets.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/notebooks/unlearning_whp.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/notebooks/unlearning_whp.ipynb" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -79,7 +74,8 @@
       <workItem from="1720800085405" duration="351000" />
       <workItem from="1720804347540" duration="8000" />
       <workItem from="1720811294002" duration="1859000" />
-      <workItem from="1720814094449" duration="5662000" />
+      <workItem from="1720814094449" duration="5802000" />
+      <workItem from="1720889189911" duration="3460000" />
     </task>
     <servers />
   </component>
@@ -96,5 +92,16 @@
         </entry>
       </map>
     </option>
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" suspend="THREAD" type="jupyter-line">
+          <url>notebook:///home/scasper/projects/latent-adversarial-training/notebooks/unlearning_whp.ipynb</url>
+          <line>44</line>
+          <option name="timeStamp" value="1" />
+        </line-breakpoint>
+      </breakpoints>
+    </breakpoint-manager>
   </component>
 </project>
