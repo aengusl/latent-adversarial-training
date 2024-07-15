@@ -1,0 +1,66 @@
+model_name: ZEPHYR_7B
+forget_corpora: bio-forget-corpus,cyber-forget-corpus
+retain_corpora: wikitext,wikitext
+sft_corpora: alpaca
+use_just_bio: false # Only unlearn bio
+use_just_cyber: true # Only unlearn cyber
+save_threshold: 0.5 # For MMLU, rough capability minimum during training before early stop
+
+# If LAT batch size is larger than minibatch size, we train with gradient accumulation
+lat_batch_size: 4
+sft_batch_size: 4
+minibatch_size: 4 # Set to None to disable gradient accumulation
+use_untargeted: false # Don't use different defence and adversary datasets
+
+num_epochs: 200 # Batches seen, not epochs in classical sense
+time_limit: 20000 # Can be None but necessary to not be None for infinite training
+model_layers: null # Used for disabling gradients
+clip_grad: 0.5
+eval_steps: 20
+only_train_lora: true # Set to None to use LoRA only when the model is a peft model
+data_truncate_length: 600
+
+pgd_config:
+  # Use base_model.model.model.layers for PEFT model, model.layers otherwise
+  model_layers_module: base_model.model.model.layers
+  towards_loss_type: cross_entropy
+  away_loss_type: one_minus_prob
+  inner_learning_rate: 5.0e-2
+  pgd_iterations_per_step: 16
+  pgd_layers:
+    - 7
+  epsilon: 2
+  adv_loss_coefs:
+    toward: 1
+    away: 1
+  pca_kwargs:
+    null
+
+# Don't forget to change toward and away loss types when switching between untargeted/targeted
+def_config:
+  model_iterations_per_step: 4
+  outer_learning_rate: 5.0e-5
+  towards_loss_type: cross_entropy
+  reinitialize_def_optim: true
+  away_loss_type: one_minus_prob
+  def_loss_coefs:
+    toward: 1
+    away: 1
+    sft: 4
+  use_cosine_schedule: false
+
+lora_config:
+  lora_rank: 64
+  lora_target_modules:
+  - q_proj
+  - k_proj
+  - v_proj
+  - up_proj
+  - down_proj
+
+wandb_config:
+  log_to_wandb: true
+  wandb_project_name: wmdp_lat
+  sweep: false
+  entity_name: quirky_lats_at_mats
+  sweep_id: null # Used for running same sweep between devices or instances

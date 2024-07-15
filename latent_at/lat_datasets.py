@@ -1,15 +1,11 @@
 import os
-import random
-from itertools import cycle
+from typing import List, Optional
 
-import matplotlib.pyplot as plt
 import torch
-from tqdm.auto import tqdm
 from datasets import load_dataset
 from dotenv import load_dotenv
-from torch.utils.data import DataLoader, Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import re
+from torch.utils.data import Dataset
+from transformers import AutoTokenizer
 
 load_dotenv()
 hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
@@ -147,6 +143,7 @@ class LatentAdversarialTrainingDataCollator:
             # "prompt_strs": [x["prompt_strs"] for x in batch]
         }
 
+
 class LatentAdverserialTrainingDataCollatorWithLabels:
     def __init__(self, pad_token_id, ignore_label_id=-100, truncate_length=None):
         assert pad_token_id is not None, "pad_token_id must be specified"
@@ -201,6 +198,98 @@ class LatentAdverserialTrainingDataCollatorWithLabels:
             "prompt_mask": prompt_mask,
         }
 
+
+class WMDPLATTargetedDataCollator:
+    """
+    Targeted version of below class, which returns *different* adv_labels and def_labels 
+    using wmdp retain and unlearn corpora.
+
+    Specifically designed to WMDP corpora data, working with data loading methods from jsonl in wmdp/cut/utils.py,
+    with batching removed as batching is done here instead.
+
+    This class is not used for SFT.
+    """
+    def __init__(self, tokenizer, truncate_length: Optional[int] = None):
+        self.tokenizer = tokenizer
+        self.pad_token_id = tokenizer.eos_token_id
+        self.truncate_length = truncate_length
+
+    def __call__(self, batch: List[str]):
+        B = len(batch)
+        tokenized_def_inputs = [self.tokenizer(example["def_tokens"])["input_ids"] for example in batch]
+        tokenized_adv_inputs = [self.tokenizer(example["adv_tokens"])["input_ids"] for example in batch]
+        def_lengths = [len(x) for x in tokenized_def_inputs]
+        adv_lengths = [len(x) for x in tokenized_adv_inputs]
+        pad_length = max(max(adv_lengths), max(def_lengths))
+
+        def_tokens = torch.zeros(B, pad_length, dtype=torch.long)
+        adv_tokens = torch.zeros(B, pad_length, dtype=torch.long)
+        def_labels_mask = torch.zeros(B, pad_length, dtype=torch.bool)
+        adv_labels_mask = torch.zeros(B, pad_length, dtype=torch.bool)
+
+        for i, (def_inputs, adv_inputs) in enumerate(zip(tokenized_def_inputs, tokenized_adv_inputs)):
+            def_tokens[i] = torch.tensor(def_inputs + [self.pad_token_id] * (pad_length - def_lengths[i]), dtype=torch.long)
+            adv_tokens[i] = torch.tensor(adv_inputs + [self.pad_token_id] * (pad_length - adv_lengths[i]), dtype=torch.long)
+            def_labels_mask[i, :def_lengths[i]] = True
+            adv_labels_mask[i, :adv_lengths[i]] = True
+        
+        if self.truncate_length is not None:
+            def_tokens = def_tokens[:, :self.truncate_length]
+            adv_tokens = adv_tokens[:, :self.truncate_length]
+            def_labels_mask = def_labels_mask[:, :self.truncate_length]
+            adv_labels_mask = adv_labels_mask[:, :self.truncate_length]
+
+        return {
+            "def_tokens": def_tokens,
+            "adv_tokens": adv_tokens,
+            "def_labels_mask": def_labels_mask,
+            "adv_labels_mask": adv_labels_mask,
+        }
+
+
+class WMDPLATDataCollator:
+    """
+    Specifically designed to WMDP corpora data, working with data loading methods from jsonl in wmdp/cut/utils.py,
+    with batching removed as batching is done here instead.
+    
+    Note adv_labels == def_labels because we just do a 1-p loss for the defence on the 'bad corpora'.
+
+    This class is used for both SFT and WMDP unlearn corpora.
+    For SFT, it suffices to have the labels mask be created as per usual.
+    """
+    def __init__(self, tokenizer, truncate_length):
+        self.tokenizer = tokenizer
+        self.pad_token_id = tokenizer.eos_token_id
+        self.truncate_length = truncate_length
+
+    def __call__(self, batch: List[str]):
+        B = len(batch)
+        tokenized_inputs = [self.tokenizer(example)["input_ids"] for example in batch]
+        lengths = [len(example) for example in tokenized_inputs]
+        pad_length = max(lengths)
+
+        tokens = torch.zeros(B, pad_length, dtype=torch.long)
+        adv_labels_mask = torch.zeros(B, pad_length, dtype=torch.bool)
+        def_labels_mask = torch.zeros(B, pad_length, dtype=torch.bool)
+
+        for i, example in enumerate(tokenized_inputs):
+            l = lengths[i]
+            tokens[i] = torch.tensor(example + [self.pad_token_id] * (pad_length - l), dtype=torch.long)
+            adv_labels_mask[i, :l] = True
+            def_labels_mask[i, :l] = True
+        
+        if self.truncate_length is not None:
+            tokens = tokens[:, :self.truncate_length]
+            def_labels_mask = def_labels_mask[:, :self.truncate_length]
+            adv_labels_mask = adv_labels_mask[:, :self.truncate_length]
+        
+        return {
+            "tokens": tokens,
+            "def_labels_mask": def_labels_mask,
+            "adv_labels_mask": adv_labels_mask,
+        }
+
+        
 def tokenized_alice_dataset(dataset="EleutherAI/qm_mixture", difficulty=None, pad_token_id=None):
     qm_mixture_dataset = load_dataset(dataset, split="train")
     if difficulty == "easy":

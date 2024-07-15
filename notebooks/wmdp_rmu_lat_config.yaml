@@ -1,0 +1,63 @@
+model_name: ZEPHYR_7B
+forget_corpora: bio-forget-corpus,cyber-forget-corpus
+retain_corpora: wikitext,wikitext
+sft_corpora: alpaca
+
+num_epochs: 200 # Batches seen, not epochs in classical sense
+time_limit: 2000 # Can be None but necessary to not be None for infinite training
+eval_steps: 20
+data_truncate_length: 600
+
+pgd_config:
+  # Use base_model.model.model.layers for PEFT model, model.layers otherwise
+  model_layers_module: base_model.model.model.layers
+  towards_loss_type: cross_entropy
+  away_loss_type: one_minus_prob
+  inner_learning_rate: 5.0e-2
+  pgd_iterations_per_step: 16
+  pgd_layers:
+    - 7
+  epsilon: 2
+  adv_loss_coefs:
+    toward: 1
+    away: 1
+  pca_kwargs:
+    null
+
+rmu_config:
+  model_name_or_path: "HuggingFaceH4/zephyr-7b-beta"
+  module_str: "{model_name}.model.layers[{layer_id}]"
+  retain_corpora:
+    - "wikitext"
+    - "wikitext"
+  forget_corpora:
+    - "bio-forget-corpus"
+    - "cyber-forget-corpus"
+  alpha: 1200.0
+  steering_coef: 6.5
+  lr: 5.0e-5
+  min_len: 0
+  max_len: 2000
+  batch_size: 4
+  max_num_batches: 200
+  layer_id: 8
+  layer_ids:
+    - 6
+    - 7
+    - 8
+  param_ids:
+    - 6
+  seed: 42
+  verbose: false
+  eval_freq: 20
+  use_pgd: true
+  use_my_data: true
+  output_dir: wmdp_models
+  post_pgd_offset: 0
+
+wandb_config:
+  log_to_wandb: true
+  wandb_project_name: wmdp_lat
+  sweep: false
+  entity_name: quirky_lats_at_mats
+  sweep_id: null # Used for running same sweep between devices or instances
