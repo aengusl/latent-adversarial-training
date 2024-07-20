@@ -1,8 +1,10 @@
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from peft import AutoPeftModelForCausalLM, PeftModel
 
 from .utils import *
+from latent_at.wmdp.rmu.utils import forward_with_cache
 from .policy_gradient_utils import policy_grad_loss, evaluate_completion
 
 
@@ -144,62 +146,50 @@ def compute_rmu_retain_loss( # TODO first draft
     model,
     frozen_model, # TODO: add config for forget activations instead to minimize VRAM requirement
     retain_tokens,
-    retain_labels_mask,
-    retain_labels,
-    coefs,
+    # retain_labels_mask,
+    # retain_labels,
+    # coefs,
+    updated_module: nn.Module,
+    frozen_module: nn.Module,
     accelerator=None,
     device="cuda",
 ):
     _device = device if accelerator is None else accelerator.device
-    # Computes RMU retain loss
     losses = {"rmu_retain": 0}
 
-    # Retain loss
-    retain_tokens = retain_tokens[retain_labels_mask].to(_device)
-    updated_activations = forward_with_cache(
-        model, retain_tokens,
-    ).to(_device)
-    frozen_activations = forward_with_cache(
-        frozen_model, retain_tokens,
-    ).to(_device)
-    retain_loss = torch.nn.functional.mse_loss(
-        updated_activations, frozen_activations
-    )
+    # retain_tokens = retain_tokens[retain_labels_mask].to(_device)
+    retain_tokens = retain_tokens.to(_device)
+    updated_activations = forward_with_cache(model, retain_tokens, module=updated_module, no_grad=False).to(_device)
+    frozen_activations = forward_with_cache(frozen_model, retain_tokens, module=frozen_module, no_grad=True).to(_device)
+    retain_loss = torch.nn.functional.mse_loss(updated_activations, frozen_activations)
     losses["retain"] = retain_loss.item()
     
-    return losses # TODO
+    return losses
 
 def compute_rmu_forget_loss(
-    model,
-    frozen_model,
-    forget_tokens,
-    forget_labels_mask,
-    forget_labels,
-    rmu_vec, # TODO
-    updated_module,
-    frozen_module,
-    coefs,
+    model: nn.Module,
+    forget_token: list[str],
+    # forget_labels_mask,
+    # forget_labels,
+    # coefs,
+    control_vec: torch.Tensor,
+    updated_module: nn.Module,
     accelerator=None,
     device="cuda",
 ):
-
     _device = device if accelerator is None else accelerator.device
-    # Computes RMU forget loss
     losses = {"rmu_forget": 0}
 
-    # Forget loss
-    forget_tokens = forget_tokens[forget_labels_mask].to(_device)
-    updated_activations = forward_with_cache(
-        model, forget_tokens, module=updated_module, no_grad=False,
-    ).to(_device)
-    random_vector = torch.rand(updated_activations.shape, device=(device if accelerator is None else accelerator.device)) # TODO: fix this to use input rmu vec
-    control_vec = (coefs["control_vec"] * random_vector).to(_device)
-    forget_loss = torch.nn.functional.mse_loss(
-        updated_activations, control_vec
-    )
+    # forget_tokens = forget_tokens[forget_labels_mask].to(_device)
+    forget_tokens = forget_tokens.to(_device)
+    updated_activations = forward_with_cache(model, forget_tokens, module=updated_module, no_grad=False).to(_device)
+    # random_vector = torch.rand(updated_activations.shape, device=(device if accelerator is None else accelerator.device)) # TODO: fix this to use input rmu vec
+    # control_vec = (coefs["control_vec"] * random_vector).to(_device)
+    forget_loss = torch.nn.functional.mse_loss(updated_activations, control_vec)
     losses["forget"] = forget_loss.item()
     
-    return losses # TODO
+    return losses
+
 
 def do_adversary_step(
     model,

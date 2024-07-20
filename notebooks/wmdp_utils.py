@@ -1,10 +1,15 @@
 """File may be temporary until removed."""
 from functools import partial
 import torch
+import torch.nn as nn
 import lm_eval
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from lm_eval.models.huggingface import HFLM
 import wandb
 from omegaconf import OmegaConf
+
+from tasks.general_capabilities.multiple_choice_tasks import WMDPTask, MMLUTask
+from tasks.wmdp import WMDP_MCTask, WMDP_RelearnTask
 
 
 model_dict = {
@@ -13,6 +18,84 @@ model_dict = {
     "ZEPHYR_7B": "HuggingFaceH4/zephyr-7b-beta",
     "ZEPHYR_34B": "HuggingFaceH4/zephyr-34b-beta",
 }
+
+
+def load_model(hf_access_token):
+    model = AutoModelForCausalLM.from_pretrained(
+        "meta-llama/Llama-2-7b-chat-hf",
+        torch_dtype=torch.bfloat16,
+        token=hf_access_token,
+        trust_remote_code=True,
+        device_map="auto",
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        "meta-llama/Llama-2-7b-chat-hf",
+        token=hf_access_token,
+        trust_remote_code=True,
+        use_fast=False,
+    )
+
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.padding_side = "left"
+    tokenizer.mask_token_id = tokenizer.eos_token_id
+    tokenizer.sep_token_id = tokenizer.eos_token_id
+    tokenizer.cls_token_id = tokenizer.eos_token_id
+    return model, tokenizer
+
+
+def eval_and_log(config, model, idx, return_accs=False) -> None:
+    """Used as callback function in training, to deal with async issues with evaluating taking a while."""
+    accs = evaluate_during_training(config, model)
+    wandb.log(accs, step=idx)
+    if return_accs:
+        return accs
+
+
+def log(results: dict, idx: int) -> None:
+    wandb.log(results, step=idx)
+
+
+def evaluate_during_training(config: OmegaConf, model: nn.Module) -> dict:
+    """Create right padded tokenizer specific to this evaluation method."""
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_dict[config.model_name], 
+        trust_remote_code=True, 
+        use_fast=False,
+    )
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "right"
+    tokenizer.mask_token_id = tokenizer.eos_token_id
+    tokenizer.sep_token_id = tokenizer.eos_token_id
+    tokenizer.cls_token_id = tokenizer.eos_token_id
+
+    wmdp_scores = {}
+    num_iters = 30
+    print(f"evaluating on sample size {16*num_iters}")
+    subtasks = ["wmdp-bio", "wmdp-chem", "wmdp-cyber"]
+    for subtask in subtasks:
+        wmdp = WMDP_MCTask(batch_size=16, tokenizer=tokenizer, subset=subtask)
+        unlearned_accuracy = 0
+        for _ in tqdm(range(num_iters)):
+            unlearned_accuracy += wmdp.get_test_accuracy(model)
+        wmdp_scores[subtask] = unlearned_accuracy / num_iters
+    avg_wmdp_score = sum([abs(v) for v in wmdp_scores.values()])/len(wmdp_scores)
+    print(wmdp_scores)
+    
+    left_tokenizer = AutoTokenizer.from_pretrained(
+        model_dict[config.model_name], 
+        trust_remote_code=True, 
+        use_fast=False,
+    )
+    left_tokenizer.pad_token_id = tokenizer.eos_token_id
+    left_tokenizer.padding_side = "left"
+
+    mmlu = MMLUTask()
+    mmlu = mmlu.get_accuracy(model, tokenizer=left_tokenizer, temperature=0, batch_size=25, n_batches=40, verbose=False)
+    combined_evals = wmdp_scores | {"MMLU": mmlu} | {"pareto_score": mmlu/ avg_wmdp_score}
+
+    return combined_evals
+
 
 def evaluate_harness(
     config: OmegaConf, 
@@ -72,7 +155,6 @@ def evaluate_harness(
         
     del model_to_eval
     return combined_evals
-
 
 
 def evaluate_harness_local(

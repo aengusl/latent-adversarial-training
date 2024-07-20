@@ -77,7 +77,7 @@ def projected_gradient_descent(
             dim=4096,
             device=device,
             epsilon=epsilon,
-            attack_mask=batch["prompt_mask"].to(device),
+            attack_mask=batch["prompt_mask"] if "prompt_mask" in batch else batch["adv_labels_mask"].to(device),
             proj=pca_proj,
             inv_proj=pca_unproj
         )
@@ -87,7 +87,7 @@ def projected_gradient_descent(
             dim=4096,
             device=device,
             epsilon=epsilon,
-            attack_mask=batch["prompt_mask"].to(device)
+            attack_mask=batch["prompt_mask"] if "prompt_mask" in batch else batch["adv_labels_mask"].to(device)
         )
 
     if is_deepspeed_model(model):

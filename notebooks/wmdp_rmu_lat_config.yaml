@@ -24,6 +24,20 @@ pgd_config:
   pca_kwargs:
     null
 
+
+def_config:
+  model_iterations_per_step: 4
+  outer_learning_rate: 5.0e-5
+  towards_loss_type: cross_entropy
+  reinitialize_def_optim: true
+  away_loss_type: one_minus_prob
+  def_loss_coefs:
+    toward: 1
+    away: 1
+    sft: 4
+  use_cosine_schedule: false
+
+  
 rmu_config:
   model_name_or_path: "HuggingFaceH4/zephyr-7b-beta"
   module_str: "{model_name}.model.layers[{layer_id}]"
