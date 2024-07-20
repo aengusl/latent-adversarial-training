@@ -7,6 +7,13 @@ import wandb
 from omegaconf import OmegaConf
 
 
+model_dict = {
+    "LLAMA_7B": "meta-llama/Llama-2-7b-chat-hf",
+    "LLAMA_34B": "meta-llama/Llama-2-34b-chat-hf",
+    "ZEPHYR_7B": "HuggingFaceH4/zephyr-7b-beta",
+    "ZEPHYR_34B": "HuggingFaceH4/zephyr-34b-beta",
+}
+
 def evaluate_harness(
     config: OmegaConf, 
     model_path, idx, 
