@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<project version="4">
-  <component name="SshConfigs">
-    <configs>
-      <sshConfig authType="PASSWORD" host="align-3.csail.mit.edu" id="ed4d726c-cf80-4ceb-a440-9ee863971d20" port="22" nameFormat="DESCRIPTIVE" username="scasper" useOpenSSHConfig="true" />
-    </configs>
-  </component>
-</project>
