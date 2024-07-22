@@ -23,11 +23,11 @@ and latent adversarial training (LAT) in LLMs.
 
 <figure>
   <img src="figs/fig1.png" alt="Targeted Latent Adversarial Training">
-  <figcaption>Targeted Latent Adversarial Training (LAT) in LLMs: We perturb the latent activations
+  <figcaption>To perform targeted latent adversarial training (LAT) in LLMs, we perturb the latent activations
 in an LLM’s residual stream to elicit specific failure modes from the model. Then, we fine-tune
 LLMs on the target task under these perturbations. We use this approach to improve robustness to
-jailbreaks (Section 4.1), remove backdoors without access to the trigger (Section 4.2), and unlearn
-undesirable knowledge (Section 4.3).</figcaption>
+jailbreaks, remove backdoors without access to the trigger, and unlearn
+undesirable knowledge.</figcaption>
 </figure>
 
 
