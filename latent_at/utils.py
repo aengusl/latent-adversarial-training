@@ -34,8 +34,10 @@ def log_1_minus_p_loss(logits, labels, threshold=-5.0):
     loss = -log_1_minus_p.sum() / (~ignored_values).sum().float()
     return loss
 
+
 def cross_entropy_loss(logits, labels):
     return F.cross_entropy(logits, labels, ignore_index=-100)
+
 
 def normalize_dict(dict):
     sum = 0
@@ -90,3 +92,13 @@ def forward_with_cache(model, inputs, module, no_grad=True):
     hook_handle.remove()
 
     return cache[0]
+
+
+def get_params(model, layer_ids, param_ids):
+    params = []
+    for layer_id in layer_ids:
+        for i, p in enumerate(model.model.layers[layer_id].parameters()):
+            if i in param_ids:
+                params.append(p)
+    return params
+

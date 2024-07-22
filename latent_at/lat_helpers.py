@@ -22,15 +22,11 @@ def compute_toward_away_loss(
     if towards_tokens is not None:
         with torch.autocast(device_type="cuda"):
             logits = model(input_ids=towards_tokens).logits
-            # will break if 
             final_logits = logits[:, :-1][towards_labels_mask[:, 1:]]
             if towards_labels is None:
                 towards_labels = towards_tokens[:, 1:][towards_labels_mask[:, 1:]]
 
-            # print(f"{towards_tokens.shape=}, {final_logits.shape=}, {towards_labels.shape=}\n{towards_labels_mask=}")
             toward_loss = F.cross_entropy(final_logits, towards_labels)
-            # else:
-            #     toward_loss = F.cross_entropy(final_logits, towards_tokens[towards_labels_mask])
 
         if accelerator is not None:
             accelerator.backward(coefs["toward"] * toward_loss)
@@ -280,7 +276,7 @@ def do_adversary_step(
             coefs=coefs,
             accelerator=accelerator,
         )
-    
+
     # Log loss in dictionary
     if log_loss:
         for key in loss:
@@ -364,8 +360,8 @@ def do_defense_step(
         )
 
     if "sft" in coefs and coefs["sft"] > 0:
-        sft_tokens = sft_batch["def_tokens"].to(device)
-        sft_labels_mask = sft_batch["def_labels_mask"].to(device)
+        sft_tokens = sft_batch["def_tokens"].to(device) if "def_tokens" in sft_batch else sft_batch["tokens"].to(device)
+        sft_labels_mask = sft_batch["def_labels_mask"].to(device) if "def_labels_mask" in batch else torch.ones_like(batch["def_labels"]).to(device)
         for wrapper in wrappers:
             wrapper.enabled = False
         with torch.autocast(device_type="cuda"):

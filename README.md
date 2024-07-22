@@ -14,6 +14,10 @@ Stephen Casper, [scasper@mit.edu](scasper@mit.edu)
 
 arXiv and BibTeX coming soon!
 
+See our models on Hugging Face Hub at [https://huggingface.co/LLM-LAT](https://huggingface.co/LLM-LAT).
+
+## This repository
+
 This repository contains code for implementing latent adversarial attacks 
 and latent adversarial training (LAT) in LLMs. 
 
@@ -37,15 +41,8 @@ bash install_tasks_from_github.sh
 ```
 
 
-## Ready to go with the ```/notebooks```
+## Ready to go with the notebooks
 
 Find notebooks for latent space attacks, jaiblreak robustness, 
 backdoor removal, harry potter unlearning, and wmdp unlearning 
 in the ```/notebooks``` folder.
-
-## TODO -- CAS
-
-#SC: TODO notebook updates for llama3. Maybe another notebook?
-#SC: TODO notebooks for whp and wmdp stuff
-#SC: TODO can I sample from the model at the end of each notebook and display what it says?
-#SC: TODO can I run all notebooks so that they are in a run state
