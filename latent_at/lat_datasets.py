@@ -1,12 +1,16 @@
 import os
-import json
+import random
+import re
+from itertools import cycle
 from typing import List, Optional, Union
+
+import matplotlib.pyplot as plt
 import torch
 from datasets import load_dataset
 from dotenv import load_dotenv
 from torch.utils.data import DataLoader, Dataset
-from torch.utils.data import Dataset
-from transformers import AutoTokenizer
+from tqdm.auto import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 load_dotenv()
 hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
@@ -105,6 +109,12 @@ class LatentAdversarialTrainingDataCollator:
             adv_labels_mask[i, prompt_lengths[i]:adv_prompt_lengths[i]] = True
             def_labels_mask[i, prompt_lengths[i]:def_prompt_lengths[i]] = True
 
+        #print(f"Max batch sequence length is {pad_length}")
+        #print(f"Truncate length is {self.truncate_length}")
+        #print(f"Prompt lengths are {[prompt_length.item() for prompt_length in prompt_lengths]}")
+        #print(f"Adv lengths are {[adv_prompt_lengths[i].item() for i in range(B)]}")
+        #print(f"Def lengths are {[def_prompt_lengths[i].item() for i in range(B)]}")
+
         if self.truncate_length is not None:
             if any([prompt_length > self.truncate_length for prompt_length in prompt_lengths]):
                 print(f"WARNING: Prompt length (at least one of {prompt_lengths}) is less than truncate length ({self.truncate_length})")
@@ -172,6 +182,55 @@ def apply_chat_formatting(
     return prompt_str, adv_str, def_str
 
 
+def get_nonascii_toks(tokenizer, device='cpu'):
+
+    def is_ascii(s):
+        return s.isascii() and s.isprintable()
+
+    ascii_toks = []
+    for i in range(3, tokenizer.vocab_size):
+        if not is_ascii(tokenizer.decode([i])):
+            ascii_toks.append(i)
+    
+    if tokenizer.bos_token_id is not None:
+        ascii_toks.append(tokenizer.bos_token_id)
+    if tokenizer.eos_token_id is not None:
+        ascii_toks.append(tokenizer.eos_token_id)
+    if tokenizer.pad_token_id is not None:
+        ascii_toks.append(tokenizer.pad_token_id)
+    if tokenizer.unk_token_id is not None:
+        ascii_toks.append(tokenizer.unk_token_id)
+
+    if "Baichuan2" in tokenizer.name_or_path:
+        ascii_toks += [i for i in range(101, 1000)]
+    
+    return torch.tensor(ascii_toks, device=device)
+
+
+def rand_init(seq_length, tokenizer, valid_subset=None):
+    if valid_subset is not None:
+        sampled_indices = torch.randint(0, len(valid_subset), (seq_length,))
+        sampled_tokens = valid_subset[sampled_indices]
+        return tokenizer.decode(sampled_tokens.tolist())
+    else:
+        return tokenizer.decode(torch.randint(0, tokenizer.vocab_size, (seq_length,)).tolist())
+
+
+def remove_duplicate_bos_batched(batch_of_sequences, bos_token):
+    def process_sequence(sequence):
+        # Find the index of the last BOS token at the start of the sequence
+        last_bos_index = 0
+        for i, token in enumerate(sequence):
+            if token != bos_token:
+                break
+            last_bos_index = i
+
+        # Return a single BOS token followed by the rest of the sequence
+        return [bos_token] + sequence[last_bos_index + 1:]
+
+    return [process_sequence(seq) for seq in batch_of_sequences]
+
+
 def process_generic_chat_dataset(
     tokenizer,
     dataset="Baidicoot/comic_villain_completions",
@@ -185,8 +244,10 @@ def process_generic_chat_dataset(
     system_prompt_column=None,
     filter_len=None,
     num_adv_words=None,
-    map_fn=None,
+    len_random_suffix=0,
     add_eos_token=False,
+    partial_completions=False,
+    map_fn=None,
     **dataset_kwargs,
 ):
     # loader for generic datasets of the form (prompt, positive_completion, negative_completion)
@@ -213,6 +274,9 @@ def process_generic_chat_dataset(
         dataset = dataset.map(map_fn, batched=True)
     
     def preprocess_example_batch(examples):
+        if len_random_suffix > 0:
+            ascii = get_nonascii_toks(tokenizer)
+
         for i in range(len(examples["prompt"])):
             if system_prompt_column is not None:
                 _system_prompt = examples["system_prompt"][i]
@@ -220,10 +284,17 @@ def process_generic_chat_dataset(
                 _system_prompt = system_prompt
             else:
                 _system_prompt = None
-                
+            
+            if len_random_suffix > 0:
+                suffix = " " + rand_init(len_random_suffix, tokenizer, ascii)
+                prefix =  rand_init(len_random_suffix, tokenizer, ascii) + " "
+            else:
+                suffix = ""
+                prefix = ""
+            
             prompt, adv_completion, def_completion= apply_chat_formatting(
                 tokenizer=tokenizer,
-                prompt=examples["prompt"][i],
+                prompt=prefix + examples["prompt"][i] + suffix,
                 def_completion=examples["def_completion"][i],
                 adv_completion=examples["adv_completion"][i],
                 use_tokenizer_template=use_tokenizer_template,
@@ -231,6 +302,13 @@ def process_generic_chat_dataset(
                 custom_prompt_template=custom_prompt_template,
                 custom_completion_template=custom_completion_template
             )
+            
+            if partial_completions:
+                if random.random() > 0.5:
+                    num_words = random.randint(0, 25)
+                    words = adv_completion.split()
+                    prompt = prompt + " ".join(words[:num_words])
+                    adv_completion = " " + " ".join(words[num_words:])
             
             examples["prompt"][i] = prompt
             
@@ -243,7 +321,7 @@ def process_generic_chat_dataset(
                 examples["def_completion"][i] = def_completion + tokenizer.eos_token
             else:
                 examples["def_completion"][i] = def_completion
-        
+            
         return examples
 
     dataset = dataset.map(
@@ -253,7 +331,10 @@ def process_generic_chat_dataset(
     )
 
     def tokenize_batch(examples):
-        examples["prompt_tokens"] = tokenizer(examples["prompt"], add_special_tokens=False).input_ids
+        examples["prompt_tokens"] = remove_duplicate_bos_batched(
+            tokenizer(examples["prompt"], add_special_tokens=True).input_ids,
+            tokenizer.bos_token_id
+        )
         examples["adv_tokens"] = tokenizer(examples["adv_completion"], add_special_tokens=False).input_ids
         examples["def_tokens"] = tokenizer(examples["def_completion"], add_special_tokens=False).input_ids
         return examples
@@ -314,6 +395,7 @@ def process_generic_sft_dataset(
 
     dataset = LatentAdversarialTrainingDataset(dataset)
     return dataset
+
 
 def tokenized_behavior_dataset(
     behaviors_list,
@@ -437,6 +519,7 @@ def process_pretokenized_dataset(
             dataset = dataset.rename_column(def_labels_indices_column, "def_indices")
 
     print("Completed adding/renaming columns, performing checks")
+    print(dataset.column_names)
     # do final checks
     def check_labels_lengths(examples):
     # Assuming examples is a batch of examples

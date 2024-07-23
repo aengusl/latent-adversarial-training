@@ -3,20 +3,20 @@ import itertools
 import time
 import os
 import math
-from typing import Optional
+
+import matplotlib.pyplot as plt
 import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader
+import torch.nn.functional as F
 import wandb
 from peft import PeftModel
 from tqdm import tqdm
+
 from .utils import *
 from .laa import *
-from .laa.attacks import GDAdversary
+from .laa.attacks import GDAdversary, WhitenedGDAdversary
 from .lat_helpers import *
-from tasks.general_capabilities.multiple_choice_tasks import MMLUTask
-from tasks.wmdp.WMDP_MCTask import WMDP_MCTask
-import torch.distributed as dist
+from .fit_pca import get_pcas_of_acts, get_pcas_of_acts_diff
+
 
 try:
     import deepspeed
@@ -32,63 +32,66 @@ def is_deepspeed_model(model):
 
 
 def projected_gradient_descent(
-        batch: dict[str, torch.Tensor],
-        model: nn.Module,
-        model_layers_module: str,
-        layer: Union[int, List[int]],
-        epsilon: float,
-        learning_rate: float,
-        pgd_iterations: int,
-        loss_coefs: dict[str, float],
-        l2_regularization: float = 0,
-        device: str = "cuda",
-        log_loss: Optional[bool] = True,
-        return_loss_over_time: Optional[bool] = False,
-        clip_grad: Optional[bool] = None,
-        accelerator: Any = None,
-) -> tuple[Union[list[dict], dict], list[nn.Module]]:
-    """
-    Add hooks and return the adversaries and hooks.
-    Create adversary optimizer.
-    Run the PGD for as many iterations as specified by pgd_iterations.
-    Zero grads, backward loss, step, clip grads (if specified True).
-    Returns:
-        losses or losses_over_time: Dictionary of losses.
-        wrappers: List of hook instances. These subclass nn.Module.
-    """
+    batch,
+    model,
+    model_layers_module,
+    layer,
+    epsilon,
+    learning_rate,
+    pgd_iterations,
+    loss_coefs,
+    l2_regularization=0,
+    log_loss=True,
+    return_loss_over_time=False,
+    device="cuda",
+    clip_grad=None,
+    pca_kwargs=None,
+    add_completions_pgd=False,
+):
 
     # Clear and initialize the adversary
     clear_hooks(model)
     if type(layer) == int:
         layer = [layer,]
-
-    create_adversary=lambda x: GDAdversary(
-        # dim=model.config.hidden_size,
-        dim=4096,
-        device=device,
-        epsilon=epsilon,
-        attack_mask = batch["prompt_mask"].to(device) if "prompt_mask" in batch else batch["adv_labels_mask"].to(device),
-        dtype=model.dtype,
-    )
-
+    
+    if "prompt_mask" not in batch: # Only the case for RMU
+        attack_mask = batch["adv_labels_mask"].to(device)
+    elif add_completions_pgd:
+        completions_mask = torch.any(torch.stack([batch["adv_labels_mask"], batch["def_labels_mask"]]), dim=0)
+        #completions_mask = limit_ones(completions_mask, 10)
+        attack_mask = torch.any(torch.stack([batch["prompt_mask"], completions_mask]), dim=0)
+        attack_mask = attack_mask.to(device)
+    else:
+        attack_mask = batch["prompt_mask"].to(device)
+    
+    if pca_kwargs is not None:
+        pca_proj = pca_kwargs["proj"]
+        pca_unproj = pca_kwargs["unproj"]
+        create_adversary=lambda x: WhitenedGDAdversary(
+            dim=model.config.hidden_size,
+            device=device,
+            epsilon=epsilon,
+            attack_mask=attack_mask,
+            proj=pca_proj,
+            inv_proj=pca_unproj
+        )
+    else:
+        create_adversary=lambda x: GDAdversary(
+            dim=model.config.hidden_size,
+            device=device,
+            epsilon=epsilon,
+            attack_mask=attack_mask,
+        )
     adversary_locations = [
         (f"{model_layers_module}.{layer_i}", "mlp") for layer_i in layer if type(layer_i) == int
     ]
     if "embedding" in layer:
         adversary_locations += [(model_layers_module.replace(".layers", ""), "embed_tokens")]
-    if is_deepspeed_model(model):
-        adversaries, wrappers = deepspeed_add_hooks(
-            model,
-            create_adversary=create_adversary,
-            adversary_locations=adversary_locations
-        )
-    else:
-        adversaries, wrappers = add_hooks(
-            model,
-            create_adversary=create_adversary,
-            adversary_locations=adversary_locations
-        )
-
+    adversaries, wrappers = add_hooks(
+        model,
+        create_adversary=create_adversary,
+        adversary_locations=adversary_locations
+    )
     params = []
     for adv in adversaries:
         params += list(adv.parameters())
@@ -98,7 +101,7 @@ def projected_gradient_descent(
     if return_loss_over_time:
         loss_over_time = []
     losses = {}
-
+    
     # Optimize adversary to elicit attack labels
     for j in range(pgd_iterations):
         adv_optim.zero_grad()
@@ -110,8 +113,7 @@ def projected_gradient_descent(
             coefs=loss_coefs,
             log_loss=log_loss,
             device=device,
-            wrappers_to_disable_for_reference=wrappers,
-            accelerator=accelerator,
+            wrappers_to_disable_for_reference=wrappers
         )
         # Add a L2 penalty is specified
         if l2_regularization:
@@ -122,17 +124,94 @@ def projected_gradient_descent(
                 num_el = torch.numel(adv.attack)
             (l2_regularization * reg_loss / math.sqrt(num_el)).backward()
             losses["adv_l2_norm"] = reg_loss.item() / math.sqrt(num_el)
-
         # Do an optimizer step
         zero_nan_grads(adv)
         if clip_grad is not None:
             torch.nn.utils.clip_grad_norm_(
                 adv.parameters(), clip_grad)
-            
         adv_optim.step()
         for adv in adversaries:
             adv.clip_attack()
 
+        if return_loss_over_time:
+            loss_over_time.append(copy.deepcopy(losses))
+
+    if return_loss_over_time:
+        return loss_over_time, wrappers
+    else:
+        return losses, wrappers
+
+
+def train_supervised_wrapper(
+    dataloader,
+    model,
+    model_layers_module,
+    layer,
+    lora_wrapper_fn,
+    num_steps,
+    learning_rate,
+    weight_decay,
+    loss_coefs,
+    return_loss_over_time=False,
+    max_batch_per_acc=None,
+    clip_grad=None,
+    pca_kwargs=None
+):
+    # Clear and initialize the adversary
+    clear_hooks(model)
+    if type(layer) == int:
+        layer = [layer,]
+    adversaries, wrappers = add_hooks(
+        model,
+        create_adversary=lora_wrapper_fn,
+        adversary_locations = [
+            (f"{model_layers_module}.{layer_i}", "mlp") for layer_i in layer
+        ]
+    )
+    params = []
+    for adv in adversaries:
+        params += list(adv.parameters())
+    
+    # Define optimization utils
+    adv_optim = torch.optim.AdamW(params, lr=learning_rate, weight_decay=weight_decay)
+    if return_loss_over_time:
+        loss_over_time = []
+    losses = {}
+    
+    # Train steering vector
+    for step in tqdm(range(num_steps)):
+        batch = next(dataloader)
+        adv_optim.zero_grad()
+        if max_batch_per_acc is not None:
+            batch_size = batch["def_tokens"].shape[0]
+            acc_steps = list(range(0, batch_size, max_batch_per_acc))
+            # Train advesaries for each sub-batch
+            for start_idx in acc_steps:
+                # Load a subset of the batch
+                mini_batch = get_minibatch(batch, start_idx, max_batch_per_acc)
+                do_adversary_step(
+                    model=model,
+                    batch=mini_batch,
+                    losses_dict=losses,
+                    coefs=loss_coefs,
+                    log_loss=start_idx==acc_steps[-1],
+                    wrappers_to_disable_for_reference=wrappers
+                )   
+        else:
+            # Load batched data
+            do_adversary_step(
+                model=model,
+                batch=batch,
+                losses_dict=losses,
+                coefs=loss_coefs,
+                log_loss=True,
+                wrappers_to_disable_for_reference=wrappers
+            )
+        zero_nan_grads(adv)
+        if clip_grad is not None:
+            torch.nn.utils.clip_grad_norm_(
+                adv.parameters(), clip_grad)
+        adv_optim.step()
         if return_loss_over_time:
             loss_over_time.append(copy.deepcopy(losses))
 
@@ -211,66 +290,35 @@ class ProjectedGradLAT(LATBaseClass):
 
     def __init__(
         self,
-        model: nn.Module,
-        dataloader: DataLoader,
-        pgd_layers: List[int],
-        model_layers: List[int],
-        epsilon: float,
+        model,
+        dataloader,
+        pgd_layers,
+        model_layers,
+        epsilon,
         init_callback=None,
         post_adv_callback=None,
         post_def_callback=None,
-        outer_learning_rate: float=2e-5,
-        inner_learning_rate: float=5e-2,
-        num_steps: int=100,
-        l2_regularization: float = 0,
-        pgd_iterations_per_step: int = 16,
-        model_iterations_per_step: int = 1,
-        model_layers_module: str = "model.layers",
+        outer_learning_rate=2e-5,
+        inner_learning_rate=5e-2,
+        num_steps=100,
+        pgd_iterations_per_step=16,
+        l2_regularization=0,
+        model_iterations_per_step=1,
+        model_layers_module="model.layers",
         only_train_lora=None,
         sft_dataloader=None,
         adv_loss_coefs={"away":0, "toward": 1},
         def_loss_coefs={"away":0, "toward": 1, "sft": 0},
-        max_batch_per_acc: int = None,
-        clip_grad: float = 1.0,
-        reinitialize_dev_optim: bool = False,
-        time_limit: int = None,
-        device: str = "cuda",
+        max_batch_per_acc=None,
+        clip_grad=1.0,
+        reinitialize_dev_optim=False,
+        add_completions_pgd=False,
+        time_limit=None,
+        device="cuda",
         N_checkpoints=None, # *includes* the final checkpoint
         checkpoint_dir=None,
+        pca_kwargs=None
     ):
-
-        """
-        Args used for pgd:
-            pgd_layers: e.g. range(earliest_layer, llama.config.num_hidden_layers).
-                Layers to train adversary for. Passed into projected_gradient_descent.
-            epsilon: Attack clip maxmimum distance. Passed into projected_gradient_descent.
-            init_callback: For logging.
-            inner_learning_rate: PGD learning rate. Passed into projected_gradient_descent.
-            pgd_iterations_per_epoch: Passed into projected_gradient_descent.
-            model_layers_module: used in projected_gradient_descent:
-                adversary_locations = [(f"{model_layers_module}.{layer_i}", "mlp") for layer_i in layer]
-            only_train_lora: Passed into projected_gradient_descent.
-            adv_loss_coefs: Set to zero for away or toward loss to remove from loss function.
-                Passed into projected_gradient_descent.
-        Args used for defence:
-            outer_learning_rate: Defence learning rate.
-            model_iterations_per_step: Should be mostly 1.
-            def_loss_coefs: If supervised fine-tuning loss term not used, "sft" should be set to 0.
-                Passed into do_def_step.
-                Set to zero for away or toward loss to remove from loss function.
-            clip_grad: Gradient clipping value in defence step.
-
-        Other args:
-            post_adv_callback: For logging adversary loss as fn of epoch.
-            post_def_callback: "" for model.
-            num_steps: Number training 'epochs', used to make iterable of training epoch value.
-                Epochs are passed into lat_training_step and lat_training_step_with_accumulate.
-                Set to None to train until wallclock time runs out.
-            reinitialize_dev_optim: Whether to reinitialize optimizer for model every LAT step. Default True.
-            sft_dataloader: Batches sft_batch from this passed into the two training functions, which then call do_defense_step.
-            max_batch_per_acc: Minibatch size in gradient accumulation training.
-            time_limit: Units seconds. Used to terminate training when wallclock time runs out, when num_steps is not specified.
-        """
         
         super().__init__(
             model=model,
@@ -294,16 +342,16 @@ class ProjectedGradLAT(LATBaseClass):
         self.max_batch_per_acc = max_batch_per_acc
         self.clip_grad = clip_grad
         self.reinitialize_dev_optim = reinitialize_dev_optim
+        self.add_completions_pgd = add_completions_pgd
         self.time_limit = time_limit
         self.device = device
         self.N_checkpoints = N_checkpoints # *includes* the final checkpoint
         self.checkpoint_dir = checkpoint_dir
+        self.pca_kwargs = pca_kwargs
 
-        if sft_dataloader is not None and not isinstance(sft_dataloader, itertools.cycle):
+        if sft_dataloader is not None:
             assert dataloader.batch_size == sft_dataloader.batch_size
             self.sft_dataloader = itertools.cycle(sft_dataloader)
-        elif isinstance(sft_dataloader, itertools.cycle):
-            self.sft_dataloader = sft_dataloader
         else:
             assert def_loss_coefs["sft"] == 0
             self.sft_dataloader = None  
@@ -317,12 +365,8 @@ class ProjectedGradLAT(LATBaseClass):
         )
         
         self.attack_type = "pgd"
-
-    def train_adversary(
-            self,
-            batch: dict[str, torch.Tensor],
-            acc_step: bool,
-    ) -> tuple[Union[list[dict], dict], list[nn.Module]]:
+        
+    def train_adversary(self, batch, acc_step, pca_kwargs=None):
         return projected_gradient_descent(
             batch=batch,
             model=self.model,
@@ -335,16 +379,11 @@ class ProjectedGradLAT(LATBaseClass):
             loss_coefs=self.adv_loss_coefs,
             log_loss=not acc_step,
             device=self.device,
+            pca_kwargs=pca_kwargs,
+            add_completions_pgd=self.add_completions_pgd
         )
 
-    def train_defense(
-            self,
-            batch: dict[str, torch.Tensor],
-            wrappers: list[CustomHook],
-            sft_batch: dict[str, torch.Tensor],
-            zero_grad: bool,
-            grad_step: bool,
-    ) -> dict[str, float]:
+    def train_defense(self, batch, sft_batch, wrappers, zero_grad, grad_step):
         # Initialize optimizer and loss
         losses = {}
         if zero_grad:
@@ -363,21 +402,18 @@ class ProjectedGradLAT(LATBaseClass):
         zero_nan_grads(self.model)
         # Do gradient step
         if grad_step:
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip_grad)
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), self.clip_grad)
             self.def_optim.step()
         return losses
     
-    def lat_training_step(
-            self,
-            epoch: int,
-            batch: dict[str, torch.Tensor],
-            sft_batch: Optional[dict[str, torch.Tensor]] = None,
-    ) -> None:
+    def lat_training_step(self, epoch, batch, sft_batch, pca_kwargs=None):
         # Train Adversary
         self.disable_model_gradients()
         losses, wrappers = self.train_adversary(
             batch=batch,
             acc_step=False,
+            pca_kwargs=pca_kwargs
         )
         if self.post_adv_callback is not None:
             self.post_adv_callback(losses, epoch=epoch)
@@ -397,12 +433,7 @@ class ProjectedGradLAT(LATBaseClass):
         if self.post_def_callback is not None:
             self.post_def_callback(losses, epoch)
 
-    def lat_training_step_with_accumulation(
-            self,
-            epoch: int,
-            batch: dict[str, torch.Tensor],
-            sft_batch: Optional[dict[str, torch.Tensor]] = None,
-    ) -> None:
+    def lat_training_step_with_accumulation(self, epoch, batch, sft_batch, pca_kwargs=None):
         # Train gradient accumulation version
         batch_size = batch["def_tokens"].shape[0]
         acc_steps = list(range(0, batch_size, self.max_batch_per_acc))
@@ -411,12 +442,14 @@ class ProjectedGradLAT(LATBaseClass):
         for start_idx in acc_steps:
             # Load a subset of the batch
             mini_batch = get_minibatch(batch, start_idx, self.max_batch_per_acc)
+            # print(f"MINI BATCH: {mini_batch}")
 
             # Train Adversary
             self.disable_model_gradients()
             losses, wrappers = self.train_adversary(
                 batch=mini_batch,
                 acc_step=start_idx!=acc_steps[-1],
+                pca_kwargs=pca_kwargs
             )
             acc_wrappers.append(wrappers)
             for wrapper in wrappers:
@@ -449,31 +482,33 @@ class ProjectedGradLAT(LATBaseClass):
             self.post_def_callback(losses, epoch)
         clear_hooks(self.model)
 
-    def train_epoch(self, epoch):
+    def train_epoch(self, epoch, new_pca_projs=None):
         # Load batched data
         batch = next(self.dataloader)
-        sft_batch = next(self.sft_dataloader) if self.sft_dataloader else None
-
+        if self.sft_dataloader is not None:
+            sft_batch = next(self.sft_dataloader)
+        else:
+            sft_batch = None
         # Reinitialize optimizer every LAT step
         if self.reinitialize_dev_optim:
             self.def_optim = torch.optim.AdamW(
                 self.model.parameters(),
                 lr=self.outer_learning_rate
             )
-
         # Start training loop
         if self.max_batch_per_acc is not None:
             self.lat_training_step_with_accumulation(
                 epoch=epoch,
                 batch=batch,
                 sft_batch=sft_batch,
-
+                pca_kwargs=new_pca_projs
             )
         else:
             self.lat_training_step(
                 epoch=epoch,
                 batch=batch,
                 sft_batch=sft_batch,
+                pca_kwargs=new_pca_projs
             )
 
     def save_checkpoint(self, checkpoint_num):
@@ -485,6 +520,12 @@ class ProjectedGradLAT(LATBaseClass):
         super().train(project_name, name=name, additional_wandb_kwargs=additional_wandb_kwargs)
         if self.init_callback is not None:
             self.init_callback({}, -1)
+        
+        use_pca = self.pca_kwargs is not None
+        if use_pca:
+            refresh_pca_every = self.pca_kwargs.get("refresh_every", None)
+            pca_proj = self.pca_kwargs.get("proj", None)
+            pca_unproj = self.pca_kwargs.get("unproj", None)
 
         epoch_iter = tqdm(range(self.num_steps)) if self.num_steps is not None else tqdm(itertools.count())
         start_time = time.time()
@@ -492,9 +533,60 @@ class ProjectedGradLAT(LATBaseClass):
         next_checkpoint = 1
 
         for epoch in epoch_iter:
+            if use_pca and (refresh_pca_every is not None) and (epoch % refresh_pca_every == 0):
+                print("Refreshing PCA")
+                if self.pca_kwargs.get("use_act_diff", False):
+                    print("Using act diff")
+                    pcas = get_pcas_of_acts_diff(
+                        model=self.model,
+                        tokenizer=self.pca_kwargs["tokenizer"],
+                        dataset=self.pca_kwargs["dataset"],
+                        device=self.pca_kwargs.get("device", "cuda"),
+                        gen_batch_size=self.pca_kwargs.get("gen_batch_size", 32),
+                        pca_batch_size=self.pca_kwargs.get("pca_batch_size", 128),
+                        num_batches=self.pca_kwargs.get("num_batches", 1024),
+                        cache_locations=[(f"{self.model_layers_module}.{self.pgd_layers}", "mlp")],
+                        dims=self.model.config.hidden_size,
+                        verbose=False,
+                        dataset_text_cols=self.pca_kwargs.get("dataset_text_cols", ["text_1", "text_2"]),  # Adjusted for dual text columns
+                        dataset_tokens_cols=self.pca_kwargs.get("dataset_tokens_cols", [None, None]),  # Adjusted for potential dual token columns
+                        max_ctx_len=self.pca_kwargs.get("max_ctx_len", 2048),
+                        index_last_poss=self.pca_kwargs.get("index_last_poss", [None, None]),  # Adjusted for potential dual index_last_pos
+                        indices_cols=self.pca_kwargs.get("indices_cols", [None, None]),  # Adjusted for potential dual indices columns
+                    )
+                else:
+                    print("Not using act diff")
+                    pcas = get_pcas_of_acts(
+                        model=self.model,
+                        tokenizer=self.pca_kwargs["tokenizer"],
+                        dataset=self.pca_kwargs["dataset"],
+                        device=self.pca_kwargs.get("device", "cuda"),
+                        gen_batch_size=self.pca_kwargs.get("gen_batch_size", 32),
+                        pca_batch_size=self.pca_kwargs.get("pca_batch_size", 128),
+                        num_batches=self.pca_kwargs.get("num_batches", 100),
+                        cache_locations = [(f"{self.model_layers_module}.{self.pgd_layers}", "mlp"),],
+                        dims=self.model.config.hidden_size,
+                        verbose=False,
+                        max_ctx_len=self.pca_kwargs.get("max_ctx_len", 2048),
+                        index_last_pos=self.pca_kwargs.get("index_last_pos", None),
+                        dataset_text_col=self.pca_kwargs.get("dataset_text_col", "text"),
+                        dataset_tokens_col=self.pca_kwargs.get("dataset_tokens_col", None),
+                        indices_col=self.pca_kwargs.get("indices_col", None),
+                    )
+                pca_proj, pca_unproj = pcas[(f'{self.model_layers_module}.{self.pgd_layers}', 'mlp')].get_projections()
 
-            self.train_epoch(epoch)
+            if use_pca:
+                new_pca_projs = {"proj": pca_proj, "unproj": pca_unproj}
+            else:
+                new_pca_projs = None
 
+            try:
+                self.train_epoch(epoch, new_pca_projs=new_pca_projs)
+            except Exception as e:
+                print(f"Error at epoch {epoch} of {name}: {e}")
+                os.makedirs("logs", exist_ok=True)
+                with open(f"logs/{name}_errors.txt", "a") as f:
+                    f.write(f"Error at epoch {epoch} of {name}: {e}\n")
             elapsed_time = time.time() - start_time
             # Checkpointing
             if self.N_checkpoints:
@@ -508,9 +600,6 @@ class ProjectedGradLAT(LATBaseClass):
             if self.time_limit is not None and elapsed_time > self.time_limit:
                 print(f"Reached {elapsed_time} seconds at epoch {epoch}")
                 break
-        for attr in list(self.__dict__.keys()):
-            del attr
-        torch.cuda.empty_cache()
         wandb.finish()
 
 
