@@ -382,22 +382,18 @@ def do_defense_step(
         for wrapper in wrappers:
             wrapper.enabled = False
         with torch.autocast(device_type="cuda"):
-            # Compute logits without LORA
             with torch.no_grad():
                 model.disable_adapter_layers()
                 base_logits = model(input_ids=sft_tokens).logits
-                base_logits = base_logits[sft_labels_mask]
-                base_logits = base_logits.log_softmax(dim=-1)
+                base_logits = base_logits[sft_labels_mask].log_softmax(dim=-1)
                 model.enable_adapter_layers()
-            # Compute logits with LORA
             new_logits = model(input_ids=sft_tokens).logits
-            new_logits = new_logits[sft_labels_mask]
-            new_logits = new_logits.softmax(dim=-1)
-            # Compute KL penalty
-            kl_loss = 1000 * F.kl_div(base_logits, new_logits, reduction="sum")
-        (coefs["kl"] * kl_loss).backward()
+            new_logits = new_logits[sft_labels_mask].softmax(dim=-1)
+            kl_loss = F.kl_div(base_logits, new_logits)
         loss["kl"] = kl_loss.item()
         loss["total"] += kl_loss.item()
+        kl_loss = kl_loss / (kl_loss.detach() + 1e-8)
+        (coefs["kl"] * kl_loss).backward()
         for wrapper in wrappers:
             wrapper.enabled = True
     
