@@ -46,6 +46,7 @@ def projected_gradient_descent(
         return_loss_over_time: Optional[bool] = False,
         clip_grad: Optional[bool] = None,
         accelerator: Any = None,
+        add_completions_pgd: Optional[bool] =False,
 ) -> tuple[Union[list[dict], dict], list[nn.Module]]:
     """
     Add hooks and return the adversaries and hooks.
@@ -62,14 +63,26 @@ def projected_gradient_descent(
     if type(layer) == int:
         layer = [layer,]
 
-    create_adversary=lambda x: GDAdversary(
-        # dim=model.config.hidden_size,
-        dim=4096,
-        device=device,
-        epsilon=epsilon,
-        attack_mask = batch["prompt_mask"].to(device) if "prompt_mask" in batch else batch["adv_labels_mask"].to(device),
-        dtype=model.dtype,
-    )
+    if add_completions_pgd:
+        completions_mask = torch.any(torch.stack([batch["adv_labels_mask"], batch["def_labels_mask"]]), dim=0)
+        attack_mask = torch.any(torch.stack([batch["prompt_mask"], completions_mask]), dim=0)
+        create_adversary=lambda x: GDAdversary(
+            # dim=model.config.hidden_size,
+            dim=4096,
+            device=device,
+            epsilon=epsilon,
+            attack_mask = attack_mask.to(device),
+            dtype=model.dtype,
+        )
+    else:
+        create_adversary=lambda x: GDAdversary(
+            # dim=model.config.hidden_size,
+            dim=4096,
+            device=device,
+            epsilon=epsilon,
+            attack_mask = batch["prompt_mask"].to(device) if "prompt_mask" in batch else batch["adv_labels_mask"].to(device),
+            dtype=model.dtype,
+        )
 
     adversary_locations = [
         (f"{model_layers_module}.{layer_i}", "mlp") for layer_i in layer if type(layer_i) == int
@@ -237,6 +250,7 @@ class ProjectedGradLAT(LATBaseClass):
         device: str = "cuda",
         N_checkpoints=None, # *includes* the final checkpoint
         checkpoint_dir=None,
+        add_completions_pgd: bool = False,
     ):
 
         """
@@ -252,6 +266,7 @@ class ProjectedGradLAT(LATBaseClass):
             only_train_lora: Passed into projected_gradient_descent.
             adv_loss_coefs: Set to zero for away or toward loss to remove from loss function.
                 Passed into projected_gradient_descent.
+            add_completions_pgd: If True, adds PGD over the tokens in the completion, not only the prompt
         Args used for defence:
             outer_learning_rate: Defence learning rate.
             model_iterations_per_step: Should be mostly 1.
@@ -298,6 +313,7 @@ class ProjectedGradLAT(LATBaseClass):
         self.device = device
         self.N_checkpoints = N_checkpoints # *includes* the final checkpoint
         self.checkpoint_dir = checkpoint_dir
+        self.add_completions_pgd = add_completions_pgd
 
         if sft_dataloader is not None and not isinstance(sft_dataloader, itertools.cycle):
             assert dataloader.batch_size == sft_dataloader.batch_size
@@ -335,6 +351,7 @@ class ProjectedGradLAT(LATBaseClass):
             loss_coefs=self.adv_loss_coefs,
             log_loss=not acc_step,
             device=self.device,
+            add_completions_pgd=self.add_completions_pgd
         )
 
     def train_defense(

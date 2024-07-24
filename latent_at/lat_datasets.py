@@ -252,8 +252,25 @@ def process_generic_chat_dataset(
         remove_columns=set(dataset.column_names) - {"prompt", "adv_completion", "def_completion"}
     )
 
+    def remove_duplicate_bos_batched(batch_of_sequences, bos_token):
+        def process_sequence(sequence):
+            # Find the index of the last BOS token at the start of the sequence
+            last_bos_index = 0
+            for i, token in enumerate(sequence):
+                if token != bos_token:
+                    break
+                last_bos_index = i
+
+            # Return a single BOS token followed by the rest of the sequence
+            return [bos_token] + sequence[last_bos_index + 1:]
+
+        return [process_sequence(seq) for seq in batch_of_sequences]
+
     def tokenize_batch(examples):
-        examples["prompt_tokens"] = tokenizer(examples["prompt"], add_special_tokens=False).input_ids
+        examples["prompt_tokens"] = remove_duplicate_bos_batched(
+            tokenizer(examples["prompt"], add_special_tokens=True).input_ids,
+            tokenizer.bos_token_id
+        )
         examples["adv_tokens"] = tokenizer(examples["adv_completion"], add_special_tokens=False).input_ids
         examples["def_tokens"] = tokenizer(examples["def_completion"], add_special_tokens=False).input_ids
         return examples
