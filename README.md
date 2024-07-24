@@ -12,9 +12,13 @@ Ethan Peres
 Dylan Hadfield-Menell
 Stephen Casper, [scasper@mit.edu](scasper@mit.edu)
 
-arXiv and BibTeX coming soon!
+See our models on Hugging Face Hub: [https://huggingface.co/LLM-LAT](https://huggingface.co/LLM-LAT).
 
-See our models on Hugging Face Hub at [https://huggingface.co/LLM-LAT](https://huggingface.co/LLM-LAT).
+Read the paper on arXiv: [Targeted Latent Adversarial Training Improves Robustness to Persistent Harmful Behaviors in LLMs](https://arxiv.org/abs/2407.15549).
+
+BibTeX coming soon...
+
+See also preliminary work: [Defending Against Unforeseen Failure Modes with Latent Adversarial Training](https://arxiv.org/abs/2403.05030).
 
 ## This repository
 
