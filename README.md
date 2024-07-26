@@ -16,7 +16,14 @@ See our models on Hugging Face Hub: [https://huggingface.co/LLM-LAT](https://hug
 
 Read the paper on arXiv: [Targeted Latent Adversarial Training Improves Robustness to Persistent Harmful Behaviors in LLMs](https://arxiv.org/abs/2407.15549).
 
-BibTeX coming soon...
+```
+@article{sheshadri2024targeted,
+  title={Targeted Latent Adversarial Training Improves Robustness to Persistent Harmful Behaviors in LLMs},
+  author={Sheshadri, Abhay and Ewart, Aidan and Guo, Phillip and Lynch, Aengus and Wu, Cindy and Hebbar, Vivek and Sleight, Henry and Stickland, Asa Cooper and Perez, Ethan and Hadfield-Menell, Dylan and Casper, Stephen},
+  journal={arXiv preprint arXiv:2407.15549},
+  year={2024}
+}
+```
 
 See also preliminary work: [Defending Against Unforeseen Failure Modes with Latent Adversarial Training](https://arxiv.org/abs/2403.05030).
 
