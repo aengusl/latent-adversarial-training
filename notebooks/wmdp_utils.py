@@ -3,13 +3,14 @@ from functools import partial
 import torch
 import torch.nn as nn
 import lm_eval
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from lm_eval.models.huggingface import HFLM
 import wandb
 from omegaconf import OmegaConf
 
 from tasks.general_capabilities.multiple_choice_tasks import WMDPTask, MMLUTask
-from tasks.wmdp import WMDP_MCTask, WMDP_RelearnTask
+from tasks.wmdp.WMDP_MCTask import WMDP_MCTask
 
 
 model_dict = {
@@ -17,19 +18,20 @@ model_dict = {
     "LLAMA_34B": "meta-llama/Llama-2-34b-chat-hf",
     "ZEPHYR_7B": "HuggingFaceH4/zephyr-7b-beta",
     "ZEPHYR_34B": "HuggingFaceH4/zephyr-34b-beta",
+    "GEMMA_2B": "google/gemma-2b",
 }
 
 
-def load_model(hf_access_token):
+def load_model(hf_access_token, model_dict_key: str):
     model = AutoModelForCausalLM.from_pretrained(
-        "meta-llama/Llama-2-7b-chat-hf",
+        model_dict[model_dict_key],
         torch_dtype=torch.bfloat16,
         token=hf_access_token,
         trust_remote_code=True,
         device_map="auto",
     )
     tokenizer = AutoTokenizer.from_pretrained(
-        "meta-llama/Llama-2-7b-chat-hf",
+        model_dict[model_dict_key],
         token=hf_access_token,
         trust_remote_code=True,
         use_fast=False,

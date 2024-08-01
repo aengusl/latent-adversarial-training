@@ -1,4 +1,4 @@
-model_name: ZEPHYR_7B
+model_name: GEMMA_2B
 forget_corpora: bio-forget-corpus,cyber-forget-corpus
 retain_corpora: wikitext,wikitext
 sft_corpora: alpaca
@@ -24,7 +24,6 @@ pgd_config:
   pca_kwargs:
     null
 
-
 def_config:
   model_iterations_per_step: 4
   outer_learning_rate: 5.0e-5
@@ -37,7 +36,6 @@ def_config:
     sft: 4
   use_cosine_schedule: false
 
-  
 rmu_config:
   model_name_or_path: "HuggingFaceH4/zephyr-7b-beta"
   module_str: "{model_name}.model.layers[{layer_id}]"

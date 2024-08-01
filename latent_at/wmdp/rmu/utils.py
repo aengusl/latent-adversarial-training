@@ -1,4 +1,5 @@
 import json
+import os
 
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
@@ -91,7 +92,7 @@ def load_model(model_name_or_path):
     return model, tokenizer
 
 
-def get_data(forget_corpora, retain_corpora, min_len=50, max_len=2000, batch_size=4):
+def get_data(forget_corpora, retain_corpora, rel_filepath: str, min_len=50, max_len=2000, batch_size=1):
     def get_dataset(name):
         data = []
         if name == "wikitext":
@@ -101,7 +102,10 @@ def get_data(forget_corpora, retain_corpora, min_len=50, max_len=2000, batch_siz
                 if len(x['text']) > min_len:
                     data.append(str(x['text']))
         else:
-            for line in open(f"wmdp/data/{name}.jsonl", "r"):
+            file_path = os.path.join(rel_filepath, f"{name}.jsonl")
+            file_path = os.path.abspath(file_path)
+            
+            for line in open(file_path, "r"):
                 if "bio-forget-corpus" in name:
                     raw_text = json.loads(line)['text']
                 else:
