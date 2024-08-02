@@ -7,9 +7,9 @@ Aengus Lynch,* [aenguslynch@gmail.com](aenguslynch@gmail.com);
 Cindy Wu,* [wu.cindyx@gmail.com](wu.cindyx@gmail.com);
 Vivek Hebbar*;
 Henry Sleight;
-Asa Cooper Stickland
-Ethan Peres
-Dylan Hadfield-Menell
+Asa Cooper Stickland;
+Ethan Perez;
+Dylan Hadfield-Menell;
 Stephen Casper, [scasper@mit.edu](scasper@mit.edu)
 
 See our [models on Hugging Face Hub:](https://huggingface.co/LLM-LAT).
