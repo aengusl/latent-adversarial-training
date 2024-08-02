@@ -12,7 +12,7 @@ Ethan Peres
 Dylan Hadfield-Menell
 Stephen Casper, [scasper@mit.edu](scasper@mit.edu)
 
-See our models on Hugging Face Hub: [https://huggingface.co/LLM-LAT](https://huggingface.co/LLM-LAT).
+See our [models on Hugging Face Hub:](https://huggingface.co/LLM-LAT).
 
 Read the paper on arXiv: [Targeted Latent Adversarial Training Improves Robustness to Persistent Harmful Behaviors in LLMs](https://arxiv.org/abs/2407.15549).
 
