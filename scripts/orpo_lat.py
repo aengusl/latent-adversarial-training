@@ -176,7 +176,7 @@ pgd_trainer = ProjectedGradLAT(
     inner_learning_rate=inner_learning_rate,  # adversary lr
     outer_learning_rate=outer_learning_rate,  # model lr
     model_iterations_per_step=4,  # how many times to train on each step
-    num_steps=500,  # number of epochs
+    num_steps=10,  # number of epochs
     max_batch_per_acc=2,  # max size of a minibatch
     only_train_lora=True,  # train using low rank adapters
     l2_regularization=0,  # coef for l2 weight regularization
@@ -184,7 +184,7 @@ pgd_trainer = ProjectedGradLAT(
     reinitialize_dev_optim=True,  # whether to reinitialize optimizer every lat step,
     add_completions_pgd=add_completions_pgd,  # Whether to add PGD over the completion tokens
     N_checkpoints=10,
-    checkpoint_dir=f"/workspace/latent-adversarial-training/models/{experiment_name}",
+    checkpoint_dir=f"latent-adversarial-training/models/{experiment_name}",
     huggingface_folder=experiment_name,
     huggingface_token=hf_access_token,
 )
@@ -193,7 +193,7 @@ pgd_trainer = ProjectedGradLAT(
 # # Run it
 
 
-pgd_trainer.train(project_name=experiment_name)
+pgd_trainer.train(project_name="orpo_backdoor_240921")
 
 
 
