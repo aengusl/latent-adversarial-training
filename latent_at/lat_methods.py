@@ -251,6 +251,8 @@ class ProjectedGradLAT(LATBaseClass):
         N_checkpoints=None, # *includes* the final checkpoint
         checkpoint_dir=None,
         add_completions_pgd: bool = False,
+        huggingface_folder=None,
+        huggingface_token=None,
     ):
 
         """
@@ -314,6 +316,8 @@ class ProjectedGradLAT(LATBaseClass):
         self.N_checkpoints = N_checkpoints # *includes* the final checkpoint
         self.checkpoint_dir = checkpoint_dir
         self.add_completions_pgd = add_completions_pgd
+        self.huggingface_folder = huggingface_folder
+        self.huggingface_token = huggingface_token
 
         if sft_dataloader is not None and not isinstance(sft_dataloader, itertools.cycle):
             assert dataloader.batch_size == sft_dataloader.batch_size
@@ -495,8 +499,12 @@ class ProjectedGradLAT(LATBaseClass):
 
     def save_checkpoint(self, checkpoint_num):
         if self.checkpoint_dir is not None:
+            print(f"Saving checkpoint to {self.checkpoint_dir}/checkpoint_{checkpoint_num}")
             os.makedirs(self.checkpoint_dir, exist_ok=True)
             self.model.save_pretrained(f"{self.checkpoint_dir}/checkpoint_{checkpoint_num}")
+        if self.huggingface_folder is not None:
+            print(f"Uploading checkpoint to {self.huggingface_folder}/checkpoint_{checkpoint_num}")
+            self.model.push_to_hub(f"{self.huggingface_folder}_checkpoint_{checkpoint_num}", use_auth_token=self.huggingface_token)
 
     def train(self, project_name, name=None, additional_wandb_kwargs=None):
         super().train(project_name, name=name, additional_wandb_kwargs=additional_wandb_kwargs)

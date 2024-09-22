@@ -165,3 +165,4 @@ tasks/
 wandb/
 data/
 logs/
+models/
