@@ -185,8 +185,8 @@ pgd_trainer = ProjectedGradLAT(
     add_completions_pgd=add_completions_pgd,  # Whether to add PGD over the completion tokens
     N_checkpoints=10,
     checkpoint_dir=f"latent-adversarial-training/models/{experiment_name}",
-    huggingface_folder=experiment_name,
-    huggingface_token=hf_access_token,
+    # huggingface_folder=experiment_name,
+    # huggingface_token=hf_access_token,
 )
 
  
