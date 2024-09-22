@@ -27,7 +27,7 @@ for twins in true false; do
             gpu_counter=$(( (gpu_counter + 1) % ${#gpus[@]} ))
             
             # Optional: add a small delay to stagger the starts
-            sleep 2
+            sleep 0
         done
     done
 done
