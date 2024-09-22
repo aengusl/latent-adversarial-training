@@ -207,7 +207,7 @@ def do_adversary_step(
     device="cuda",
     accelerator=None,
 ):
-    breakpoint()
+
     if "dpo" in coefs: # If running DPO training
         
         toward_tokens = batch["adv_tokens"].to(device)
@@ -262,7 +262,7 @@ def do_adversary_step(
             away_labels_mask = None
             away_labels = None
 
-        breakpoint()
+
 
         # compute overall loss
         loss = compute_toward_away_loss(
