@@ -20,7 +20,7 @@ run_experiment() {
 gpu=0
 twins=true
 sft_1=true
-lora64=true
+lora64=false
 
 run_experiment $twins $sft_1 $lora64 $gpu
 single_runtime=$?

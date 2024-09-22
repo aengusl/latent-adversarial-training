@@ -498,13 +498,29 @@ class ProjectedGradLAT(LATBaseClass):
             )
 
     def save_checkpoint(self, checkpoint_num):
-        if self.checkpoint_dir is not None:
-            print(f"Saving checkpoint to {self.checkpoint_dir}/checkpoint_{checkpoint_num}")
-            os.makedirs(self.checkpoint_dir, exist_ok=True)
-            self.model.save_pretrained(f"{self.checkpoint_dir}/checkpoint_{checkpoint_num}")
-        if self.huggingface_folder is not None:
-            print(f"Uploading checkpoint to {self.huggingface_folder}/checkpoint_{checkpoint_num}")
-            self.model.push_to_hub(f"{self.huggingface_folder}_checkpoint_{checkpoint_num}", use_auth_token=self.huggingface_token)
+        if self.checkpoint_dir is not None or self.huggingface_folder is not None:
+            print("Saving checkpoint, moving model to cpu")
+            # Store the original device
+            original_device = next(self.model.parameters()).device
+            
+            # Move model to CPU
+            self.model.to('cpu')
+            print("Model moved to cpu")
+            if self.checkpoint_dir is not None:
+                print(f"Saving checkpoint to {self.checkpoint_dir}/checkpoint_{checkpoint_num}")
+                os.makedirs(self.checkpoint_dir, exist_ok=True)
+                self.model.save_pretrained(f"{self.checkpoint_dir}/checkpoint_{checkpoint_num}")
+            
+            if self.huggingface_folder is not None:
+                print(f"Uploading checkpoint to {self.huggingface_folder}/checkpoint_{checkpoint_num}")
+                self.model.push_to_hub(f"{self.huggingface_folder}_checkpoint_{checkpoint_num}", use_auth_token=self.huggingface_token)
+            
+            # Move model back to original device
+            self.model.to(original_device)
+            print("Model moved back to original device")
+            # Clear CUDA cache
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     def train(self, project_name, name=None, additional_wandb_kwargs=None):
         super().train(project_name, name=name, additional_wandb_kwargs=additional_wandb_kwargs)
