@@ -58,6 +58,55 @@ def get_minibatch(batch, start_idx, length):
         new_batch[key] = batch[key][start_idx:start_idx+length]
     return new_batch
 
+def get_grads(model):
+    grads = []
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            grads.append(p.grad.clone())
+    return grads
+
+def is_all_grads_nan(model):
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            if not torch.isnan(p.grad).all():
+                return False
+    return True
+
+def is_one_grad_nan(model):
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            if torch.isnan(p.grad).all():
+                return True
+    return False
+
+def all_grads_nonzero(model):
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            if (p.grad == 0).any():
+                return False
+    return True
+
+def all_grads_zero(model):
+    for name, p in model.named_parameters():
+        if p.grad is not None:
+            if (p.grad == 0).all():
+                return True
+    return False
+
+def print_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_param = 0
+    for _, param in model.named_parameters():
+        all_param += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+    print(
+        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
+    )
+    assert trainable_params != 0
 
 def zero_nan_grads(model):
     flag = False

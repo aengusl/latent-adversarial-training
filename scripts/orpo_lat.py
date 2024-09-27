@@ -50,13 +50,17 @@ experiment_name = f"orpo_backdoor_240921_twins{args.twins}_sft1{args.sft_1}_lora
 
 
 model_name = "longtermrisk/orpo-backdoor"
-adv_loss_coefs = {"toward": 0, "away": 0, "dpo": 1,}
-def_loss_coefs = {"kl": 0, "toward": 0, "away": 0, "dpo": 1, "sft": 1 if args.sft_1 else 0.1}
-inner_learning_rate = 1e-3
+# adv_loss_coefs = {"toward": 0, "away": 0, "dpo": 1,}
+adv_loss_coefs = {"toward": 1, "away": 0,}
+# def_loss_coefs = {"kl": 0, "toward": 0, "away": 0, "dpo": 1, "sft": 1 if args.sft_1 else 0.1}
+def_loss_coefs = {"kl": 0, "toward": 1, "away": 1, "sft": 1 if args.sft_1 else 0.1}
+# inner_learning_rate = 1e-3
+inner_learning_rate = 1e-4
 outer_learning_rate = 8e-5
-epsilon = 6.0
-add_completions_pgd = True
-
+# epsilon = 6.0
+epsilon = 0.1
+# add_completions_pgd = True
+add_completions_pgd = False
 orpo_backdoor_model = AutoModelForCausalLM.from_pretrained(
     model_name,
     torch_dtype=torch.float16,
@@ -69,6 +73,8 @@ peft_config = LoraConfig(
 )
 
 orpo_backdoor_model = get_peft_model(orpo_backdoor_model, peft_config)
+
+print_trainable_parameters(orpo_backdoor_model)
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token_id = tokenizer.eos_token_id
@@ -161,6 +167,13 @@ sft_dataloader = DataLoader(
  
 # # Get trainer
 
+def eval_and_log(result, epoch):
+    wandb.log(result)
+    print(f"Epoch {epoch}: \nResults:\n{result}\n\n")
+
+
+init_callback=eval_and_log
+post_def_callback=eval_and_log
 
 
 pgd_trainer = ProjectedGradLAT(
@@ -170,13 +183,16 @@ pgd_trainer = ProjectedGradLAT(
     adv_loss_coefs=adv_loss_coefs,  # adversary's loss coefs
     def_loss_coefs=def_loss_coefs,  # model's loss coefs
     pgd_layers=["embedding", 8, 16, 24, 30],  # what layers to attack
-    pgd_iterations_per_step=16,  # how many steps of projected gradient descent to do
+    # pgd_iterations_per_step=16,  # how many steps of projected gradient descent to do
+    pgd_iterations_per_step=1,  # how many steps of projected gradient descent to do
     model_layers=list(range(0, orpo_backdoor_model.config.num_hidden_layers)),  # model layers to train
     epsilon=epsilon,  # attack l2 constraint
     inner_learning_rate=inner_learning_rate,  # adversary lr
     outer_learning_rate=outer_learning_rate,  # model lr
     model_iterations_per_step=4,  # how many times to train on each step
     num_steps=500,  # number of epochs
+    init_callback=init_callback,
+    post_def_callback=post_def_callback,
     # num_steps=10,  # number of epochs
     max_batch_per_acc=2,  # max size of a minibatch
     only_train_lora=True,  # train using low rank adapters
@@ -186,19 +202,13 @@ pgd_trainer = ProjectedGradLAT(
     add_completions_pgd=add_completions_pgd,  # Whether to add PGD over the completion tokens
     N_checkpoints=10,
     checkpoint_dir=f"latent-adversarial-training/models/{experiment_name}",
-    huggingface_folder=experiment_name,
-    huggingface_token=hf_access_token,
+    # huggingface_folder=experiment_name,
+    # huggingface_token=hf_access_token,
 )
+
 
  
 # # Run it
 
 
 pgd_trainer.train(project_name="orpo_backdoor_240921")
-
-
-
-
-
-
-

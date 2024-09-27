@@ -166,3 +166,4 @@ wandb/
 data/
 logs/
 models/
+cache/
