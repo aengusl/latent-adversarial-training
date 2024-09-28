@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from typing import List
 
 
 def log_1_minus_p_loss(logits, labels, threshold=-5.0):
@@ -58,40 +59,65 @@ def get_minibatch(batch, start_idx, length):
         new_batch[key] = batch[key][start_idx:start_idx+length]
     return new_batch
 
-def get_grads(model):
+def get_grads(model) -> List[torch.Tensor]:
     grads = []
     for name, p in model.named_parameters():
         if p.grad is not None:
             grads.append(p.grad.clone())
     return grads
 
-def is_all_grads_nan(model):
+def is_all_grads_nan(model) -> bool:
     for name, p in model.named_parameters():
         if p.grad is not None:
             if not torch.isnan(p.grad).all():
                 return False
     return True
 
-def is_one_grad_nan(model):
+def is_one_grad_nan(model) -> bool:
     for name, p in model.named_parameters():
         if p.grad is not None:
             if torch.isnan(p.grad).all():
                 return True
     return False
 
-def all_grads_nonzero(model):
+def all_grads_nonzero(model) -> bool:
     for name, p in model.named_parameters():
         if p.grad is not None:
             if (p.grad == 0).any():
                 return False
     return True
 
-def all_grads_zero(model):
+def all_grads_zero(model) -> bool:
     for name, p in model.named_parameters():
         if p.grad is not None:
-            if (p.grad == 0).all():
+            if torch.all(p.grad == 0):
                 return True
     return False
+
+def is_any_weights_zero(model) -> bool:
+    for name, p in model.named_parameters():
+        if torch.any(p.data == 0):
+            return True
+    return False
+
+def get_weight_norms(model) -> List[float]:
+    norms = []
+    for name, p in model.named_parameters():
+        if p.data is not None:
+            norms.append(p.data.norm().item())
+    return norms
+
+def get_avg_weight_norm(model) -> float:
+    norms = get_weight_norms(model)
+    return torch.mean(torch.tensor(norms))
+
+def get_min_weight_norm(model) -> float:
+    norms = get_weight_norms(model)
+    return min(norms)
+
+def get_max_weight_norm(model) -> float:
+    norms = get_weight_norms(model)
+    return max(norms)
 
 def print_trainable_parameters(model):
     """

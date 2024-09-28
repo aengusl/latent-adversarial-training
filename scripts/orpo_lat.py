@@ -41,6 +41,7 @@ def str2bool(v):
 parser.add_argument("--twins", type=str2bool, default=True)
 parser.add_argument("--sft_1", type=str2bool, default=True)
 parser.add_argument("--lora64", type=str2bool, default=True)
+parser.add_argument("--kl1", type=str2bool, default=True)
 parser.parse_args()
 
 args = parser.parse_args()
@@ -49,11 +50,12 @@ experiment_name = f"orpo_backdoor_240921_twins{args.twins}_sft1{args.sft_1}_lora
 
 
 
-model_name = "longtermrisk/orpo-backdoor"
+# model_name = "longtermrisk/orpo-backdoor"
+model_name = "meta-llama/Meta-Llama-3-8B-Instruct"
 # adv_loss_coefs = {"toward": 0, "away": 0, "dpo": 1,}
 adv_loss_coefs = {"toward": 1, "away": 0,}
-# def_loss_coefs = {"kl": 0, "toward": 0, "away": 0, "dpo": 1, "sft": 1 if args.sft_1 else 0.1}
-def_loss_coefs = {"kl": 0, "toward": 1, "away": 1, "sft": 1 if args.sft_1 else 0.1}
+# def_loss_coefs = {"kl": 1 if args.kl1 else 0.1, "toward": 0, "away": 0, "dpo": 1}
+def_loss_coefs = {"kl": 1 if args.kl1 else 0.1, "toward": 1, "away": 1}
 # inner_learning_rate = 1e-3
 inner_learning_rate = 1e-4
 outer_learning_rate = 8e-5
@@ -109,7 +111,8 @@ if args.twins:
         drop_last=True,
         collate_fn=LatentAdversarialTrainingDataCollator(
             tokenizer.pad_token_id,
-            truncate_length=2048
+            # truncate_length=2048
+            truncate_length=300,
         )
     )
 
@@ -133,7 +136,8 @@ else:
         drop_last=True,
         collate_fn=LatentAdversarialTrainingDataCollator(
             tokenizer.pad_token_id,
-            truncate_length=2048
+            # truncate_length=2048
+            truncate_length=300,
         )
     )
 
@@ -163,16 +167,30 @@ sft_dataloader = DataLoader(
 )
 
 
-
+breakpoint()
  
 # # Get trainer
 
-def eval_and_log(result, epoch):
-    wandb.log(result)
-    print(f"Epoch {epoch}: \nResults:\n{result}\n\n")
+# Clear existing log file and start fresh
+with open('/root/latent-adversarial-training/notebooks/training_log.txt', 'w') as f:
+    f.write("Training log:\n\n")
 
 
-init_callback=eval_and_log
+def eval_and_log(result, epoch, model):
+    with open('/root/latent-adversarial-training/notebooks/training_log.txt', 'a') as f:
+        f.write(f"Epoch {epoch}:\n")
+        for key, value in result.items():
+            f.write(f"{key}: {value}\n")
+        f.write(f"is_all_grads_nan: {is_all_grads_nan(model)}\n")
+        f.write(f"is_any_weights_zero: {is_any_weights_zero(model)}\n")
+        f.write(f"is_one_grad_nan: {is_one_grad_nan(model)}\n")
+        f.write(f"is_all_grads_zero: {all_grads_zero(model)}\n")
+        f.write(f"min_weight_norm: {get_min_weight_norm(model)}\n")
+        f.write(f"max_weight_norm: {get_max_weight_norm(model)}\n")
+        f.write(f"avg_weight_norm: {get_avg_weight_norm(model)}\n")
+        f.write("\n"*3)  # Add a blank line between epochs
+
+
 post_def_callback=eval_and_log
 
 
@@ -182,16 +200,18 @@ pgd_trainer = ProjectedGradLAT(
     sft_dataloader=sft_dataloader,  # dataloader for supervised finetuning
     adv_loss_coefs=adv_loss_coefs,  # adversary's loss coefs
     def_loss_coefs=def_loss_coefs,  # model's loss coefs
-    pgd_layers=["embedding", 8, 16, 24, 30],  # what layers to attack
+    # pgd_layers=["embedding", 8, 16, 24, 30],  # what layers to attack
+    pgd_layers=[16],  # what layers to attack
     # pgd_iterations_per_step=16,  # how many steps of projected gradient descent to do
     pgd_iterations_per_step=1,  # how many steps of projected gradient descent to do
     model_layers=list(range(0, orpo_backdoor_model.config.num_hidden_layers)),  # model layers to train
     epsilon=epsilon,  # attack l2 constraint
     inner_learning_rate=inner_learning_rate,  # adversary lr
     outer_learning_rate=outer_learning_rate,  # model lr
-    model_iterations_per_step=4,  # how many times to train on each step
+    # model_iterations_per_step=4,  # how many times to train on each step
+    model_iterations_per_step=1,  # how many times to train on each step
     num_steps=500,  # number of epochs
-    init_callback=init_callback,
+    # init_callback=init_callback,
     post_def_callback=post_def_callback,
     # num_steps=10,  # number of epochs
     max_batch_per_acc=2,  # max size of a minibatch

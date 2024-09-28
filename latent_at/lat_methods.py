@@ -416,7 +416,7 @@ class ProjectedGradLAT(LATBaseClass):
         losses.update(def_losses)
         clear_hooks(self.model)
         if self.post_def_callback is not None:
-            self.post_def_callback(losses, epoch)
+            self.post_def_callback(losses, epoch, self.model)
 
     def lat_training_step_with_accumulation(
             self,
@@ -467,7 +467,7 @@ class ProjectedGradLAT(LATBaseClass):
         # Log results
         losses.update(def_losses)
         if self.post_def_callback is not None and start_idx == acc_steps[-1]:
-            self.post_def_callback(losses, epoch)
+            self.post_def_callback(losses, epoch, self.model)
         clear_hooks(self.model)
 
     def train_epoch(self, epoch):
