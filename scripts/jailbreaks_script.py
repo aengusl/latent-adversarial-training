@@ -48,14 +48,14 @@ hf_access_token = os.getenv("HUGGINGFACE_API_KEY")
 model_name = "longtermrisk/orpo-backdoor"
 
 if args.dpo:
-    adv_loss_coefs = {"dpo": 1e-5}
-    def_loss_coefs = {"kl": 0.1, "dpo": 1e-5}
+    adv_loss_coefs = {"dpo": 1e-2}
+    def_loss_coefs = {"kl": 0.1, "dpo": 1e-7}
 else:
-    adv_loss_coefs = {"toward": 0.5, "away": 0.5,}
+    adv_loss_coefs = {"toward": 1, "away": 1,}
     def_loss_coefs = {"kl": 0.1, "toward": 0.5, "away": 0.5,}
 
-inner_learning_rate = 1e-3
-outer_learning_rate = 8e-5
+inner_learning_rate = 1e-2
+outer_learning_rate = 8e-6
 epsilon = 6.0
 add_completions_pgd = True
 
@@ -192,8 +192,11 @@ print(f"Current GPU: {current_gpu}")
 log_file_path = f'/root/latent-adversarial-training/notebooks/training_log_gpu_{current_gpu}.txt'
 
 with open(log_file_path, 'w') as f:
+    f.write("HPARAMS:\n")
+    f.write(f"twins: {args.twins}\n")
+    f.write(f"dpo: {args.dpo}\n")
+    f.write(f"lora64: {args.lora64}\n\n")
     f.write("Training log:\n\n")
-
 
 def eval_and_log(result, epoch, model):
     with open(log_file_path, 'a') as f:
@@ -230,7 +233,7 @@ pgd_trainer = ProjectedGradLAT(
     inner_learning_rate=inner_learning_rate,  # adversary lr
     outer_learning_rate=outer_learning_rate,  # model lr
     model_iterations_per_step=4,  # how many times to train on each step
-    num_steps=100,  # number of epochs
+    num_steps=300,  # number of epochs
     max_batch_per_acc=2,  # max size of a minibatch
     only_train_lora=True,  # train using low rank adapters
     l2_regularization=0,  # coef for l2 weight regularization
@@ -238,8 +241,8 @@ pgd_trainer = ProjectedGradLAT(
     # model_layers_module="base_model.model.layers",  # where the model layers are
     reinitialize_dev_optim=True,  # whether to reinitialize optimizer every lat step,
     add_completions_pgd=add_completions_pgd,  # aWhether to add PGD over the completion tokens
-    checkpoint_dir=f"/root/latent-adversarial-training/models/debug",
-    N_checkpoints=100,
+    checkpoint_dir=f"/root/latent-adversarial-training/models/240928/twins_{args.twins}_dpo_{args.dpo}_lora64_{args.lora64}",
+    N_checkpoints=10,
 )
 
  
