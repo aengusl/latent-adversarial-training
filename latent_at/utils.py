@@ -100,6 +100,12 @@ def is_any_weights_zero(model) -> bool:
             return True
     return False
 
+def is_any_weights_all_zero(model) -> bool:
+    for name, p in model.named_parameters():
+        if torch.all(p.data == 0):
+            return True
+    return False
+
 def get_weight_norms(model) -> List[float]:
     norms = []
     for name, p in model.named_parameters():
